@@ -1,0 +1,11 @@
+# The literal `type:` value has a space, so it is stated here; the filename is a slug.
+type: Project Plan
+traits:
+- core
+required:
+- type
+- title
+- topic
+optional:
+- tags
+fields: {}

@@ -1,0 +1,8 @@
+# One topic list for every doctype that carries `topic:`.
+definitions:
+  work:
+    hiring: Recruiting, interviews, onboarding.
+    infra: Servers, deploys, the build.
+  home:
+    garden: Anything that grows.
+    house: Repairs and the things that break.

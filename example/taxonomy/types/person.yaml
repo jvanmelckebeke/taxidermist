@@ -1,0 +1,15 @@
+traits:
+- core
+required:
+- type
+- title
+optional:
+- tags
+- role
+fields:
+  role:
+    value: str
+    definitions:
+      colleague: Someone you work with.
+      friend: Someone you do not.
+    guidance: How you know them.

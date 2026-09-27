@@ -1,0 +1,6 @@
+# Declared grandfathering: a path glob, the fields it may omit, and why.
+exempt:
+- paths: notes/archive/**
+  omit:
+  - topic
+  why: The archive predates topics and is frozen.

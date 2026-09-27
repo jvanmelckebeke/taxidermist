@@ -1,0 +1,13 @@
+# Field bundles a doctype composes. Composing a trait obliges the doctype to allow
+# every field in it.
+traits:
+  core:
+    type:
+      value: str
+      guidance: The doctype. Fixed per file; it selects this schema.
+    title:
+      value: str
+      guidance: The name a person would say, not the filename.
+    tags:
+      value: list
+      guidance: Free-text keywords. Not checked; use `topic` for anything you filter on.

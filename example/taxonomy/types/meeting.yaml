@@ -1,0 +1,27 @@
+traits:
+- core
+required:
+- type
+- title
+- date
+optional:
+- tags
+- people
+- actions
+fields:
+  actions:
+    value: list
+    items:
+      what:
+        value: str
+        required: true
+        guidance: The action, as a sentence.
+      owner:
+        value: str
+        required: true
+        reference: people
+        guidance: The person page slug of whoever owns it.
+      done:
+        value: bool
+        guidance: True once it is done.
+    guidance: What the meeting decided someone would do.

@@ -1,0 +1,22 @@
+# Shared fields that form no bundle. Each names the doctypes that may carry it.
+fields:
+  topic:
+    value: str
+    vocabulary: topic
+    applies_to:
+    - note
+    - Project Plan
+    guidance: The one topic this file sits under.
+  people:
+    value: list
+    reference: people
+    applies_to:
+    - note
+    - meeting
+    guidance: Slugs of the pages under people/ this file is about.
+  date:
+    value: date
+    applies_to:
+    - note
+    - meeting
+    guidance: When it happened, not when the file was written.

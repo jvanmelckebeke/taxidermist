@@ -1,0 +1,8 @@
+# The directories this schema governs, relative to the taxonomy's parent.
+roots:
+- notes
+- people
+- meetings
+
+# A file whose `type:` has no types/ file: `error` makes it a fault, `report` tallies it.
+ungoverned: error

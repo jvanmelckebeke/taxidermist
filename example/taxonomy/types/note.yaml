@@ -1,0 +1,33 @@
+traits:
+- core
+required:
+- type
+- title
+- topic
+- date
+optional:
+- tags
+- people
+- status
+- review
+required_when:
+  review:
+    status: final
+fields:
+  status:
+    value: str
+    definitions:
+      draft: Still being written.
+      final: Done; a reviewer has signed off.
+    guidance: The note's own lifecycle.
+  review:
+    value: object
+    schema:
+      open:
+        value: bool
+        required: true
+        guidance: false once the review is done.
+      when:
+        value: date
+        guidance: When to look again.
+    guidance: The review a final note went through.

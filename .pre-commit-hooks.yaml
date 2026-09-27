@@ -1,0 +1,7 @@
+- id: taxidermist
+  name: taxidermist
+  description: Check staged markdown frontmatter against the taxonomy, and that taxonomy/format/ is current.
+  entry: taxidermist hook
+  language: golang
+  pass_filenames: false
+  always_run: true
