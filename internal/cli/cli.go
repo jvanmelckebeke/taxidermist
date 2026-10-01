@@ -11,13 +11,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/check"
 	"github.com/jvanmelckebeke/taxidermist/internal/docs"
 	"github.com/jvanmelckebeke/taxidermist/internal/lint"
-	"github.com/jvanmelckebeke/taxidermist/internal/pyyaml"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
+	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
 // Version is set at build time.
@@ -199,11 +200,8 @@ func byCount(m map[string][]string) []string {
 	return keys
 }
 
-func shown(v *pyyaml.Value) string {
-	if v == nil {
-		return ""
-	}
-	return pyyaml.Truncate(v.String(), 70)
+func shown(v any) string {
+	return value.Truncate(value.Text(v), 70)
 }
 
 func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result) {
@@ -245,7 +243,7 @@ func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result) {
 		}
 		val := ""
 		if f.Value != nil {
-			val = ": " + pyyaml.PyRepr(shown(f.Value))
+			val = ": " + strconv.Quote(shown(f.Value))
 		}
 		fmt.Fprintf(stderr, "    [%s] %s%s\n      %s\n", f.Kind, f.Field, val, f.Why)
 	}
@@ -271,7 +269,7 @@ func writeJSON(w io.Writer, r *check.Result) {
 	for _, f := range r.Faults {
 		jf := jsonFault{File: schema.Display(f.Path), Kind: f.Kind, Field: f.Field, Why: f.Why}
 		if f.Value != nil {
-			v := f.Value.String()
+			v := value.Text(f.Value)
 			jf.Value = &v
 		}
 		out.Faults = append(out.Faults, jf)
@@ -291,7 +289,7 @@ func writeTOON(w io.Writer, r *check.Result) {
 	fmt.Fprintf(w, "faults[%d]{file,kind,field,value,why}:\n", len(r.Faults))
 	for _, f := range r.Faults {
 		fmt.Fprintf(w, "  %s,%s,%s,%s,%s\n", toon(schema.Display(f.Path)), toon(f.Kind), toon(f.Field),
-			toon(pyyaml.Truncate(shown(f.Value), 60)), toon(f.Why))
+			toon(value.Truncate(shown(f.Value), 60)), toon(f.Why))
 	}
 }
 

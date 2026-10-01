@@ -48,7 +48,7 @@ A field is described by these keys:
 
 | key | means |
 |---|---|
-| `value` | `str`, `date`, `bool`, `int`, `float`, `list`, `object`, or an `a\|b` union |
+| `value` | `str`, `date`, `bool`, `int`, `float`, `list`, `object`, or an `a\|b` union. `float` accepts ints |
 | `definitions` | value → one-line meaning. The keys are the allowed values; there is no second list |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs are the allowed values, so the list grows by adding a page |
@@ -114,14 +114,15 @@ repos:
 
 pre-commit refuses to install while `core.hooksPath` is set, so pick one of the two.
 
-## YAML 1.1
+## YAML
 
-taxidermist reads YAML the way PyYAML's `safe_load` does, because the tools that
-read frontmatter are usually Python. So `2026-04-01` is a date, `yes` and `off` are
-booleans, `1e5` is a string, and `2026-02-30` fails to parse. Go YAML libraries
-follow YAML 1.2 and disagree on all four. `scripts/pyyaml-parity/` diffs the two
-parsers over any set of files; on the 8,225 markdown files it was built against,
-they agree on every one.
+Frontmatter is parsed as YAML 1.2 by [yaml.v3](https://github.com/yaml/go-yaml).
+`2026-04-01` is a date and `value: date` accepts it; `2026-02-30` is a string, so
+it fails a `date` field. `yes` and `off` are strings, not booleans: write `true` and
+`false`. A key written twice in one block does not parse.
+
+In a field spec or a type file, an unknown key is a schema error, so a typo like
+`defintions:` stops the load instead of leaving a field that checks nothing.
 
 ## License
 

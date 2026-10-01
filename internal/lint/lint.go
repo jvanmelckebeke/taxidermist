@@ -21,7 +21,6 @@ var Rules = []struct{ ID, Doc string }{
 	{"applies-to-known", "a singleton's applies_to names only doctypes that have a types/ file"},
 	{"required-optional-disjoint", "no field is in both required and optional; one of them is a leftover"},
 	{"own-fields-allowed", "every field a type file defines is in its required or optional list"},
-	{"no-values-list", "no field carries a `values:` list; the definitions keys are the values"},
 	{"trait-breadth", "a trait is composed by at least 3 doctypes, or it belongs in singletons.yaml"},
 	{"singleton-not-universal", "a singleton on (nearly) every doctype belongs in a trait"},
 	{"declared-once", "a doctype gets each field from exactly one of a trait, a singleton or its own file"},
@@ -60,7 +59,7 @@ func Run(s *schema.Schema) []Problem {
 			add("required-optional-disjoint", "`%s`: %s in both required and optional", dt, strings.Join(both, ", "))
 		}
 		declared := t.Declared()
-		for _, f := range t.Fields {
+		for _, f := range t.Fields.Vals {
 			if !declared[f.Name] {
 				add("own-fields-allowed", "`%s` defines `%s` but never lists it in required or optional", dt, f.Name)
 			}
@@ -68,9 +67,6 @@ func Run(s *schema.Schema) []Problem {
 	}
 
 	eachField(s, func(where string, f *schema.Field) {
-		if f.Raw.Has("values") {
-			add("no-values-list", "%s carries a `values:` list; its definitions keys are the values", where)
-		}
 		if f.Guidance == "" {
 			add("guidance", "%s has no guidance, so its format page says the schema has no opinion", where)
 		}
@@ -110,7 +106,7 @@ func Run(s *schema.Schema) []Problem {
 				seen[f.Name]++
 			}
 		}
-		for _, f := range t.Fields {
+		for _, f := range t.Fields.Vals {
 			seen[f.Name]++
 		}
 		var dupes []string
@@ -144,10 +140,10 @@ func eachField(s *schema.Schema, visit func(where string, f *schema.Field)) {
 	var walk func(where string, f *schema.Field)
 	walk = func(where string, f *schema.Field) {
 		visit(where, f)
-		for _, k := range f.Schema {
+		for _, k := range f.Schema.Vals {
 			walk(where+"."+k.Name, k)
 		}
-		for _, k := range f.Items {
+		for _, k := range f.Items.Vals {
 			walk(where+"[]."+k.Name, k)
 		}
 	}
@@ -161,7 +157,7 @@ func eachField(s *schema.Schema, visit func(where string, f *schema.Field)) {
 	}
 	for _, dt := range s.Doctypes() {
 		t := s.Types[dt]
-		for _, f := range t.Fields {
+		for _, f := range t.Fields.Vals {
 			walk("types/"+t.Slug+".yaml "+f.Name, f)
 		}
 	}

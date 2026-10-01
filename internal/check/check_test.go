@@ -92,8 +92,13 @@ func TestWrongType(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", strings.Replace(goodNote, "2026-07-01", "2026-07", 1)), "type date")
 }
 
-func TestYes_IsABoolAsPyYAMLReadsIt(t *testing.T) {
-	expect(t, faults(t, "notes/x.md", strings.Replace(goodNote, "title: Hiring plan", "title: yes", 1)), "type title")
+func TestYesIsAStringNotABool(t *testing.T) {
+	expect(t, faults(t, "notes/x.md", strings.Replace(goodNote, "title: Hiring plan", "title: yes", 1)))
+	expect(t, faults(t, "notes/x.md", note("status: final\nreview:\n  open: yes\n")), "type review.open")
+}
+
+func TestAnImpossibleDateIsNotADate(t *testing.T) {
+	expect(t, faults(t, "notes/x.md", strings.Replace(goodNote, "2026-07-01", "2026-02-30", 1)), "type date")
 }
 
 func TestMissingRequired(t *testing.T) {
@@ -189,7 +194,7 @@ func TestLiteralDoctypeWithASpace(t *testing.T) {
 
 func TestFrontmatterThatDoesNotParse(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", "---\ntype: note\ndescription: \"a \"quoted\" word\"\n---\n"), "parse <frontmatter>")
-	expect(t, faults(t, "notes/x.md", "---\ntype: note\ndate: 2026-02-30\n---\n"), "parse <frontmatter>")
+	expect(t, faults(t, "notes/x.md", "---\ntype: note\ntitle: a\ntitle: b\n---\n"), "parse <frontmatter>")
 	expect(t, faults(t, "notes/x.md", "---\ntype: note\n"), "parse <frontmatter>")
 }
 

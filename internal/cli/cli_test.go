@@ -49,7 +49,7 @@ func TestHook(t *testing.T) {
 	testutil.Write(t, dir, "notes/bad.md", "---\ntype: note\ntitle: t\ntopic: nope\ndate: 2026-01-01\n---\n")
 	gitIn(t, dir, "add", "notes/bad.md")
 	code, _, errs := run(t, "hook")
-	if code != 1 || !strings.Contains(errs, "[value] topic: 'nope'") || !strings.Contains(errs, "commit blocked") {
+	if code != 1 || !strings.Contains(errs, `[value] topic: "nope"`) || !strings.Contains(errs, "commit blocked") {
 		t.Fatalf("bad note: exit %d\n%s", code, errs)
 	}
 	gitIn(t, dir, "reset", "-q")

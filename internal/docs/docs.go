@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
+	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
 // HouseRules is the hand-written file whose text leads the index page's rules.
@@ -77,10 +78,7 @@ func valueType(f *schema.Field) string {
 
 // nested is the key block of an object field or of a list's items, whichever it has.
 func nested(f *schema.Field) []*schema.Field {
-	if f.Value == "object" {
-		return f.Schema
-	}
-	return f.Items
+	return f.Nested()
 }
 
 func render(s *schema.Schema, t *schema.Type) string {
@@ -98,8 +96,8 @@ func render(s *schema.Schema, t *schema.Type) string {
 	vals := func(f *schema.Field) []string {
 		seen := map[string]bool{}
 		var out []string
-		for _, d := range f.Enum(s) {
-			k := d.Key.String()
+		for _, d := range f.Enum() {
+			k := d.Key
 			if !seen[k] {
 				seen[k] = true
 				out = append(out, k)
@@ -155,8 +153,8 @@ func render(s *schema.Schema, t *schema.Type) string {
 
 	for _, c := range t.RequiredWhen {
 		var parts []string
-		for _, w := range c.When {
-			parts = append(parts, "`"+w[0].String()+": "+w[1].String()+"`")
+		for i, w := range c.When.Keys {
+			parts = append(parts, "`"+w+": "+value.Text(c.When.Vals[i])+"`")
 		}
 		L = append(L, "**`"+c.Field+"` is required only when "+strings.Join(parts, ", ")+".**", "")
 	}
@@ -189,8 +187,8 @@ func render(s *schema.Schema, t *schema.Type) string {
 					line += " Any page under [`" + k.Reference + "/`](../../" + k.Reference + "/), checked."
 				}
 				L = append(L, line)
-				for _, d := range k.Enum(s) {
-					L = append(L, "  - `"+d.Key.String()+"`: "+d.Means)
+				for _, d := range k.Enum() {
+					L = append(L, "  - `"+d.Key+"`: "+d.Means)
 				}
 			}
 		} else if f.Reference != "" {
@@ -202,7 +200,7 @@ func render(s *schema.Schema, t *schema.Type) string {
 				ticked[i] = "`" + x + "`"
 			}
 			end := "."
-			if hasMeanings(f.Enum(s)) {
+			if hasMeanings(f.Enum()) {
 				end = ", defined below."
 			}
 			L = append(L, "", "Values: "+strings.Join(ticked, " · ")+end)
@@ -213,7 +211,7 @@ func render(s *schema.Schema, t *schema.Type) string {
 	wrote := false
 	for _, name := range names {
 		f := spec(name)
-		v, enum := vals(f), f.Enum(s)
+		v, enum := vals(f), f.Enum()
 		if len(v) == 0 || !hasMeanings(enum) {
 			continue
 		}
@@ -272,7 +270,7 @@ func hasMeanings(enum []schema.Def) bool {
 
 func lookup(enum []schema.Def, key string) schema.Def {
 	for _, d := range enum {
-		if d.Key.String() == key {
+		if d.Key == key {
 			return d
 		}
 	}

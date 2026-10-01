@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/frontmatter"
-	"github.com/jvanmelckebeke/taxidermist/internal/pyyaml"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
+	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
 // Facets prints every key and value in use per doctype, doctypes with no schema
@@ -24,24 +24,23 @@ func Facets(w io.Writer, s *schema.Schema, files []string) {
 	keyOrder := map[string][]string{}
 	for _, p := range files {
 		fm, err := frontmatter.Read(p)
-		if err != nil || fm.Kind != pyyaml.Map || len(fm.Keys) == 0 {
+		if err != nil || fm == nil || len(fm.Keys) == 0 {
 			continue
 		}
 		dtv, _ := fm.Get("type")
-		dt := dtv.String()
+		dt := value.Text(dtv)
 		if seen[dt] == nil {
 			seen[dt] = map[string]*counter{}
 		}
-		for i, k := range fm.Keys {
-			v := fm.Vals[i]
-			cell := pyyaml.Truncate(v.String(), 40)
-			switch v.Kind {
-			case pyyaml.List:
+		for _, key := range fm.Keys {
+			v := fm.Fields[key]
+			cell := value.Truncate(value.Text(v), 40)
+			switch value.TypeName(v) {
+			case "list":
 				cell = "<list>"
-			case pyyaml.Map:
+			case "object":
 				cell = "<object>"
 			}
-			key := k.String()
 			c := seen[dt][key]
 			if c == nil {
 				c = &counter{counts: map[string]int{}}

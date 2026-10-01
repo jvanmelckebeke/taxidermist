@@ -65,9 +65,6 @@ func TestEachRuleFires(t *testing.T) {
 		"own-fields-allowed": func(tax string) {
 			appendTo(t, filepath.Join(tax, "types", "person.yaml"), "  age:\n    value: int\n    guidance: g\n")
 		},
-		"no-values-list": func(tax string) {
-			replaceIn(t, filepath.Join(tax, "types", "person.yaml"), "    guidance: How you know them.", "    guidance: How you know them.\n    values: [colleague, friend]")
-		},
 		"trait-breadth": func(tax string) {
 			appendTo(t, filepath.Join(tax, "traits.yaml"), "  lonely:\n    mood:\n      value: str\n      guidance: g\n")
 		},

@@ -27,7 +27,9 @@ func TestLoadErrors(t *testing.T) {
 		{"definitions and vocabulary", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, vocabulary: topic, definitions: {a: b}}\n", "both `definitions:` and `vocabulary:`"},
 		{"bad ungoverned", "scope.yaml", "roots: [notes]\nungoverned: ignore\n", "takes `error` or `report`"},
 		{"vocabulary without definitions", "vocabularies/v.yaml", "values: [a]\n", "no `definitions:` mapping"},
-		{"unparseable", "traits.yaml", "traits: [\n", "does not parse"},
+		{"unparseable", "traits.yaml", "traits: [\n", "traits.yaml"},
+		{"typo in a field spec", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, defintions: {a: b}}\n", "unknown key `defintions`"},
+		{"typo in a type file", "types/x.yaml", "requried: [type]\n", "unknown key `requried`"},
 	}
 	for _, c := range cases {
 		err := loadWith(t, c.rel, c.body)
@@ -57,10 +59,10 @@ func TestOwnFieldsWinOverSingletonsOverTraits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Types["note"].Resolved["topic"].Enum(s); len(got) != 1 || got[0].Key.String() != "only" {
+	if got := s.Types["note"].Resolved["topic"].Enum(); len(got) != 1 || got[0].Key != "only" {
 		t.Errorf("note topic enum = %v", got)
 	}
-	if got := s.Types["Project Plan"].Resolved["topic"].Enum(s); len(got) != 4 {
+	if got := s.Types["Project Plan"].Resolved["topic"].Enum(); len(got) != 4 {
 		t.Errorf("Project Plan topic enum = %v", got)
 	}
 }

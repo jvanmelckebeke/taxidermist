@@ -19,60 +19,142 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jvanmelckebeke/taxidermist/internal/pyyaml"
+	"go.yaml.in/yaml/v3"
 )
+
+// Ordered is a YAML mapping that keeps the order its keys are written in.
+type Ordered[T any] struct {
+	Keys []string
+	Vals []T
+}
+
+func (o *Ordered[T]) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: expected a mapping", n.Line)
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		var v T
+		if err := n.Content[i+1].Decode(&v); err != nil {
+			return err
+		}
+		o.Keys = append(o.Keys, n.Content[i].Value)
+		o.Vals = append(o.Vals, v)
+	}
+	return nil
+}
+
+// strict rejects mapping keys outside the allowed set, so a typo in the schema
+// (`defintions:`) is an error rather than a field that silently checks nothing.
+func strict(n *yaml.Node, what string, allowed ...string) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: %s is not a mapping", n.Line, what)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		k := n.Content[i]
+		ok := false
+		for _, a := range allowed {
+			ok = ok || k.Value == a
+		}
+		if !ok {
+			return fmt.Errorf("line %d: %s has unknown key `%s`; it takes %s", k.Line, what, k.Value, strings.Join(allowed, ", "))
+		}
+	}
+	return nil
+}
 
 // Def is one allowed value and what it means.
 type Def struct {
-	Key   pyyaml.Value
+	Key   string
 	Means string
 	Group string // the vocabulary group it sits under, if any
 }
 
 // Field is a field spec, or a key of an object field's `schema:` or a list's `items:`.
 type Field struct {
-	Name        string
-	Value       string // a type name or an `a|b` union; empty means unchecked
-	Guidance    string
-	Definitions []Def
-	Vocabulary  string
-	Dynamic     bool
-	Schema      []*Field // keys of a `value: object`
-	Items       []*Field // keys of each mapping in a `value: list`
-	Reference   string   // directory, relative to the base, whose page slugs are the values
-	Required    bool     // for nested keys only
-	AppliesTo   []string // for singletons only
-	Raw         pyyaml.Value
+	Name        string          `yaml:"-"`
+	Value       string          `yaml:"value"` // a type name or an `a|b` union; empty checks nothing
+	Guidance    string          `yaml:"guidance"`
+	Definitions Ordered[string] `yaml:"definitions"`
+	Vocabulary  string          `yaml:"vocabulary"`
+	Dynamic     bool            `yaml:"dynamic"`
+	Schema      Ordered[*Field] `yaml:"schema"` // keys of a `value: object`
+	Items       Ordered[*Field] `yaml:"items"`  // keys of each mapping in a `value: list`
+	Reference   string          `yaml:"reference"`
+	Required    bool            `yaml:"required"`   // nested keys only
+	AppliesTo   []string        `yaml:"applies_to"` // singletons only
+	defs        []Def
 }
 
-// Enum is the field's allowed values: its definitions, or its vocabulary's.
-// Nil when the field is free, dynamic, or a reference.
-func (f *Field) Enum(s *Schema) []Def {
+func (f *Field) UnmarshalYAML(n *yaml.Node) error {
+	if err := strict(n, "a field", "value", "guidance", "definitions", "vocabulary", "dynamic",
+		"schema", "items", "reference", "required", "applies_to"); err != nil {
+		return err
+	}
+	type plain Field
+	if err := n.Decode((*plain)(f)); err != nil {
+		return err
+	}
+	for i, name := range f.Schema.Keys {
+		f.Schema.Vals[i].Name = name
+	}
+	for i, name := range f.Items.Keys {
+		f.Items.Vals[i].Name = name
+	}
+	return nil
+}
+
+// Nested is the key block of an object field or of a list's items.
+func (f *Field) Nested() []*Field {
+	if f.Value == "object" {
+		return f.Schema.Vals
+	}
+	return f.Items.Vals
+}
+
+// Enum is the field's allowed values: its definitions, or its vocabulary's. Nil when
+// the field is free, dynamic, or a reference.
+func (f *Field) Enum() []Def {
 	if f.Dynamic {
 		return nil
 	}
-	if f.Vocabulary != "" {
-		return s.Vocabularies[f.Vocabulary].Defs
-	}
-	return f.Definitions
+	return f.defs
 }
 
 // Condition makes a field required when every listed field has the listed value.
 type Condition struct {
 	Field string
-	When  [][2]pyyaml.Value // field name (as Str) and value
+	When  Ordered[any]
 }
 
 // Type is one doctype.
 type Type struct {
-	Doctype      string // the literal `type:` value
-	Slug         string // the file stem, used for the format page name
-	Traits       []string
-	Required     []string
-	Optional     []string
-	RequiredWhen []Condition
-	Fields       []*Field          // declared in this file
-	Resolved     map[string]*Field // own fields, then singletons, then traits
+	Doctype      string            `yaml:"type"` // the literal `type:` value; defaults to the slug
+	Slug         string            `yaml:"-"`    // the file stem, used for the format page name
+	Traits       []string          `yaml:"traits"`
+	Required     []string          `yaml:"required"`
+	Optional     []string          `yaml:"optional"`
+	RequiredWhen []Condition       `yaml:"-"`
+	Fields       Ordered[*Field]   `yaml:"fields"`
+	Resolved     map[string]*Field `yaml:"-"` // own fields, then singletons, then traits
+}
+
+func (t *Type) UnmarshalYAML(n *yaml.Node) error {
+	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "fields"); err != nil {
+		return err
+	}
+	type plain Type
+	var raw struct {
+		plain        `yaml:",inline"`
+		RequiredWhen Ordered[Ordered[any]] `yaml:"required_when"`
+	}
+	if err := n.Decode(&raw); err != nil {
+		return err
+	}
+	*t = Type(raw.plain)
+	for i, f := range raw.RequiredWhen.Keys {
+		t.RequiredWhen = append(t.RequiredWhen, Condition{Field: f, When: raw.RequiredWhen.Vals[i]})
+	}
+	return nil
 }
 
 // Declared is every field the doctype may carry.
@@ -92,15 +174,10 @@ type Trait struct {
 	Fields []*Field
 }
 
-type Vocabulary struct {
-	Name string
-	Defs []Def
-}
-
 type Exemption struct {
-	Paths string
-	Omit  []string
-	Why   string
+	Paths string   `yaml:"paths"`
+	Omit  []string `yaml:"omit"`
+	Why   string   `yaml:"why"`
 }
 
 type Schema struct {
@@ -111,7 +188,7 @@ type Schema struct {
 	Types        map[string]*Type
 	Traits       []*Trait
 	Singletons   []*Field
-	Vocabularies map[string]*Vocabulary
+	Vocabularies map[string][]Def
 	Exempt       []Exemption
 	Owners       map[string]map[string]bool // field -> doctypes that declare it
 }
@@ -153,50 +230,55 @@ func Load(dir string) (*Schema, error) {
 	}
 	s := &Schema{
 		Dir: abs, Base: filepath.Dir(abs),
-		Types: map[string]*Type{}, Vocabularies: map[string]*Vocabulary{},
+		Types: map[string]*Type{}, Vocabularies: map[string][]Def{},
 		Owners: map[string]map[string]bool{},
 	}
 
-	scope, err := readYAML(filepath.Join(abs, "scope.yaml"))
-	if err != nil {
+	var scope struct {
+		Roots      []string `yaml:"roots"`
+		Ungoverned string   `yaml:"ungoverned"`
+	}
+	if err := read(abs, "scope.yaml", &scope); err != nil {
 		return nil, err
 	}
-	s.Roots = strList(get(scope, "roots"))
-	s.Ungoverned = "error"
-	if u, ok := scope.Get("ungoverned"); ok && u.Kind != pyyaml.Null {
-		s.Ungoverned = u.String()
+	s.Roots, s.Ungoverned = scope.Roots, scope.Ungoverned
+	if s.Ungoverned == "" {
+		s.Ungoverned = "error"
 	}
 	if s.Ungoverned != "error" && s.Ungoverned != "report" {
 		return nil, errf("scope.yaml sets `ungoverned: %s`; it takes `error` or `report`.", s.Ungoverned)
 	}
 
-	exempt, err := readYAML(filepath.Join(abs, "exempt.yaml"))
-	if err != nil {
+	var exempt struct {
+		Exempt []Exemption `yaml:"exempt"`
+	}
+	if err := read(abs, "exempt.yaml", &exempt); err != nil {
 		return nil, err
 	}
-	for i, e := range get(exempt, "exempt").Items {
-		p, ok := e.Get("paths")
-		if !ok {
+	for i, e := range exempt.Exempt {
+		if e.Paths == "" {
 			return nil, errf("exempt.yaml entry %d has no `paths:` glob.", i+1)
 		}
-		s.Exempt = append(s.Exempt, Exemption{Paths: p.String(), Omit: strList(get(e, "omit")), Why: get(e, "why").String()})
 	}
+	s.Exempt = exempt.Exempt
 
 	if err := s.loadVocabularies(); err != nil {
 		return nil, err
 	}
 
-	traits, err := readYAML(filepath.Join(abs, "traits.yaml"))
-	if err != nil {
+	var traits struct {
+		Traits Ordered[Ordered[*Field]] `yaml:"traits"`
+	}
+	if err := read(abs, "traits.yaml", &traits); err != nil {
 		return nil, err
 	}
-	tm := get(traits, "traits")
-	for i, k := range tm.Keys {
-		t := &Trait{Name: k.String()}
-		fm := tm.Vals[i]
-		for j, fk := range fm.Keys {
-			f, err := s.parseField(fk.String(), fm.Vals[j], "traits.yaml")
-			if err != nil {
+	for i, name := range traits.Traits.Keys {
+		t := &Trait{Name: name}
+		fs := traits.Traits.Vals[i]
+		for j, fname := range fs.Keys {
+			f := fs.Vals[j]
+			f.Name = fname
+			if err := s.bind(f, "traits.yaml"); err != nil {
 				return nil, err
 			}
 			t.Fields = append(t.Fields, f)
@@ -204,17 +286,18 @@ func Load(dir string) (*Schema, error) {
 		s.Traits = append(s.Traits, t)
 	}
 
-	singles, err := readYAML(filepath.Join(abs, "singletons.yaml"))
-	if err != nil {
+	var singles struct {
+		Fields Ordered[*Field] `yaml:"fields"`
+	}
+	if err := read(abs, "singletons.yaml", &singles); err != nil {
 		return nil, err
 	}
-	sm := get(singles, "fields")
-	for i, k := range sm.Keys {
-		f, err := s.parseField(k.String(), sm.Vals[i], "singletons.yaml")
-		if err != nil {
+	for i, name := range singles.Fields.Keys {
+		f := singles.Fields.Vals[i]
+		f.Name = name
+		if err := s.bind(f, "singletons.yaml"); err != nil {
 			return nil, err
 		}
-		f.AppliesTo = strList(get(sm.Vals[i], "applies_to"))
 		s.Singletons = append(s.Singletons, f)
 	}
 
@@ -228,124 +311,104 @@ func Load(dir string) (*Schema, error) {
 	return s, nil
 }
 
-func (s *Schema) loadVocabularies() error {
-	files, _ := filepath.Glob(filepath.Join(s.Dir, "vocabularies", "*.yaml"))
-	for _, file := range files {
-		name := strings.TrimSuffix(filepath.Base(file), ".yaml")
-		v, err := readYAML(file)
-		if err != nil {
-			return err
-		}
-		defs, ok := v.Get("definitions")
-		if !ok || defs.Kind != pyyaml.Map {
-			return errf("vocabularies/%s.yaml has no `definitions:` mapping.", name)
-		}
-		voc := &Vocabulary{Name: name}
-		for i, k := range defs.Keys {
-			val := defs.Vals[i]
-			if val.Kind == pyyaml.Map {
-				for j, gk := range val.Keys {
-					voc.Defs = append(voc.Defs, Def{Key: gk, Means: val.Vals[j].String(), Group: k.String()})
-				}
-				continue
-			}
-			voc.Defs = append(voc.Defs, Def{Key: k, Means: meaning(val)})
-		}
-		s.Vocabularies[name] = voc
+// read decodes one schema file. A missing file is empty.
+func read(dir, rel string, out any) error {
+	raw, err := os.ReadFile(filepath.Join(dir, rel))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := yaml.Unmarshal(raw, out); err != nil {
+		return errf("%s: %v", rel, err)
 	}
 	return nil
 }
 
-func meaning(v pyyaml.Value) string {
-	if v.Kind == pyyaml.Null {
-		return ""
+func (s *Schema) loadVocabularies() error {
+	files, _ := filepath.Glob(filepath.Join(s.Dir, "vocabularies", "*.yaml"))
+	for _, file := range files {
+		name := strings.TrimSuffix(filepath.Base(file), ".yaml")
+		rel := "vocabularies/" + name + ".yaml"
+		var v struct {
+			Definitions Ordered[yaml.Node] `yaml:"definitions"`
+		}
+		if err := read(s.Dir, rel, &v); err != nil {
+			return err
+		}
+		if len(v.Definitions.Keys) == 0 {
+			return errf("%s has no `definitions:` mapping.", rel)
+		}
+		var defs []Def
+		for i, key := range v.Definitions.Keys {
+			node := v.Definitions.Vals[i]
+			if node.Kind == yaml.MappingNode {
+				var group Ordered[string]
+				if err := node.Decode(&group); err != nil {
+					return errf("%s: group `%s`: %v", rel, key, err)
+				}
+				for j, k := range group.Keys {
+					defs = append(defs, Def{Key: k, Means: group.Vals[j], Group: key})
+				}
+				continue
+			}
+			var means string
+			if err := node.Decode(&means); err != nil {
+				return errf("%s: `%s`: %v", rel, key, err)
+			}
+			defs = append(defs, Def{Key: key, Means: means})
+		}
+		s.Vocabularies[name] = defs
 	}
-	return v.String()
+	return nil
 }
 
-func (s *Schema) parseField(name string, v pyyaml.Value, where string) (*Field, error) {
-	f := &Field{Name: name, Raw: v}
-	if v.Kind != pyyaml.Map {
-		return nil, errf("%s: field `%s` is not a mapping.", where, name)
+// bind resolves a field's allowed values, for it and every nested key.
+func (s *Schema) bind(f *Field, where string) error {
+	if f.Vocabulary != "" {
+		if len(f.Definitions.Keys) > 0 {
+			return errf("%s: field `%s` has both `definitions:` and `vocabulary:`. Keep one list.", where, f.Name)
+		}
+		defs, ok := s.Vocabularies[f.Vocabulary]
+		if !ok {
+			return errf("%s: field `%s` names vocabulary `%s`, and vocabularies/%s.yaml does not exist.",
+				where, f.Name, f.Vocabulary, f.Vocabulary)
+		}
+		f.defs = defs
 	}
-	if x, ok := v.Get("value"); ok && x.Kind != pyyaml.Null {
-		f.Value = x.String()
+	for i, k := range f.Definitions.Keys {
+		f.defs = append(f.defs, Def{Key: k, Means: f.Definitions.Vals[i]})
 	}
-	if x, ok := v.Get("guidance"); ok && x.Kind != pyyaml.Null {
-		f.Guidance = x.String()
-	}
-	if x, ok := v.Get("reference"); ok && x.Kind != pyyaml.Null {
-		f.Reference = x.String()
-	}
-	if x, ok := v.Get("vocabulary"); ok && x.Kind != pyyaml.Null {
-		f.Vocabulary = x.String()
-		if _, known := s.Vocabularies[f.Vocabulary]; !known {
-			return nil, errf("%s: field `%s` names vocabulary `%s`, and vocabularies/%s.yaml does not exist.",
-				where, name, f.Vocabulary, f.Vocabulary)
+	for _, sub := range append(append([]*Field(nil), f.Schema.Vals...), f.Items.Vals...) {
+		if err := s.bind(sub, where+": "+f.Name); err != nil {
+			return err
 		}
 	}
-	f.Dynamic = truthy(get(v, "dynamic"))
-	f.Required = truthy(get(v, "required"))
-	if defs, ok := v.Get("definitions"); ok && defs.Kind == pyyaml.Map {
-		for i, k := range defs.Keys {
-			f.Definitions = append(f.Definitions, Def{Key: k, Means: meaning(defs.Vals[i])})
-		}
-	}
-	if f.Vocabulary != "" && len(f.Definitions) > 0 {
-		return nil, errf("%s: field `%s` has both `definitions:` and `vocabulary:`. Keep one list.", where, name)
-	}
-	for _, sub := range []struct {
-		key string
-		dst *[]*Field
-	}{{"schema", &f.Schema}, {"items", &f.Items}} {
-		m, ok := v.Get(sub.key)
-		if !ok || m.Kind != pyyaml.Map {
-			continue
-		}
-		for i, k := range m.Keys {
-			child, err := s.parseField(k.String(), m.Vals[i], where+": "+name)
-			if err != nil {
-				return nil, err
-			}
-			*sub.dst = append(*sub.dst, child)
-		}
-	}
-	return f, nil
+	return nil
 }
 
 func (s *Schema) loadType(file string) error {
+	slug := strings.TrimSuffix(filepath.Base(file), ".yaml")
 	rel := "types/" + filepath.Base(file)
-	v, err := readYAML(file)
-	if err != nil {
+	t := &Type{}
+	if err := read(s.Dir, rel, t); err != nil {
 		return err
 	}
-	t := &Type{Slug: strings.TrimSuffix(filepath.Base(file), ".yaml"), Resolved: map[string]*Field{}}
-	t.Doctype = t.Slug
-	if d, ok := v.Get("type"); ok && d.Kind != pyyaml.Null {
-		t.Doctype = d.String()
+	t.Slug = slug
+	if t.Doctype == "" {
+		t.Doctype = slug
 	}
+	t.Resolved = map[string]*Field{}
 	if other, dup := s.Types[t.Doctype]; dup {
 		return errf("types/%s.yaml and %s both declare `type: %s`.", other.Slug, rel, t.Doctype)
 	}
-	t.Traits = strList(get(v, "traits"))
-	t.Required = strList(get(v, "required"))
-	t.Optional = strList(get(v, "optional"))
-	rw := get(v, "required_when")
-	for i, k := range rw.Keys {
-		c := Condition{Field: k.String()}
-		when := rw.Vals[i]
-		for j, wk := range when.Keys {
-			c.When = append(c.When, [2]pyyaml.Value{wk, when.Vals[j]})
-		}
-		t.RequiredWhen = append(t.RequiredWhen, c)
-	}
-	own := get(v, "fields")
-	for i, k := range own.Keys {
-		f, err := s.parseField(k.String(), own.Vals[i], rel)
-		if err != nil {
+	for i, name := range t.Fields.Keys {
+		f := t.Fields.Vals[i]
+		f.Name = name
+		if err := s.bind(f, rel); err != nil {
 			return err
 		}
-		t.Fields = append(t.Fields, f)
 	}
 
 	declared := t.Declared()
@@ -383,7 +446,7 @@ func (s *Schema) loadType(file string) error {
 			}
 		}
 	}
-	for _, f := range t.Fields {
+	for _, f := range t.Fields.Vals {
 		t.Resolved[f.Name] = f
 		s.own(f.Name, t.Doctype)
 	}
@@ -396,62 +459,6 @@ func (s *Schema) own(field, doctype string) {
 		s.Owners[field] = map[string]bool{}
 	}
 	s.Owners[field][doctype] = true
-}
-
-// readYAML reads a schema file. A missing file is an empty mapping.
-func readYAML(path string) (pyyaml.Value, error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return pyyaml.Value{Kind: pyyaml.Map}, nil
-	}
-	if err != nil {
-		return pyyaml.Value{}, err
-	}
-	v, err := pyyaml.Parse(raw)
-	if err != nil {
-		return pyyaml.Value{}, errf("%s does not parse: %v", path, err)
-	}
-	if v.Kind == pyyaml.Null {
-		return pyyaml.Value{Kind: pyyaml.Map}, nil
-	}
-	if v.Kind != pyyaml.Map {
-		return pyyaml.Value{}, errf("%s is not a mapping.", path)
-	}
-	return v, nil
-}
-
-func get(v pyyaml.Value, key string) pyyaml.Value {
-	x, _ := v.Get(key)
-	return x
-}
-
-func strList(v pyyaml.Value) []string {
-	var out []string
-	for _, it := range v.Items {
-		out = append(out, it.String())
-	}
-	return out
-}
-
-// truthy is Python's bool() for the scalars a schema flag holds.
-func truthy(v pyyaml.Value) bool {
-	switch v.Kind {
-	case pyyaml.Null:
-		return false
-	case pyyaml.Bool:
-		return v.B
-	case pyyaml.Int:
-		return v.I != 0 || v.Big != ""
-	case pyyaml.Float:
-		return v.F != 0
-	case pyyaml.Str:
-		return v.S != ""
-	case pyyaml.List:
-		return len(v.Items) > 0
-	case pyyaml.Map:
-		return len(v.Keys) > 0
-	}
-	return true
 }
 
 // GovernedRoots returns the absolute roots scope.yaml declares. A listed root that
