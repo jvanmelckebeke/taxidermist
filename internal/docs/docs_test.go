@@ -82,3 +82,23 @@ func TestPageContent(t *testing.T) {
 		}
 	}
 }
+
+func TestAListWithAVocabularyRendersAsAList(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "traits.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text",
+		"      value: list\n      vocabulary: topic\n      guidance: Free-text", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "tags: [<garden | hiring | house | infra>]   # optional"; !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
+	}
+}

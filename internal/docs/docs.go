@@ -158,6 +158,8 @@ func render(s *schema.Schema, t *schema.Type) string {
 				}
 				L = append(L, lead+k.Name+": <"+k.Value+">"+optMark(k))
 			}
+		case len(v) > 0 && f.Value == "list":
+			L = append(L, name+": [<"+strings.Join(v, " | ")+">]"+tail)
 		case len(v) > 0:
 			L = append(L, name+": <"+strings.Join(v, " | ")+">"+tail)
 		case f.Value == "list":
