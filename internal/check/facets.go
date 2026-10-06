@@ -14,7 +14,8 @@ import (
 // Facets prints every key and value in use per doctype, doctypes with no schema
 // first. It is the drift report: what says `index` and `Index` are the same idea
 // spelled twice, before anyone decides which one wins. A `!` marks a key the doctype
-// does not declare.
+// does not declare. Each segment rule then lists the values that have no folder yet,
+// which is fine: a value can be defined before anything is filed under it.
 func Facets(w io.Writer, s *schema.Schema, files []string) {
 	type counter struct {
 		order  []string
@@ -109,5 +110,41 @@ func Facets(w io.Writer, s *schema.Schema, files []string) {
 			}
 			fmt.Fprintf(w, "  %s %s: %d/%d  %s%s\n", flag, k, total(c), n, strings.Join(top, ", "), more)
 		}
+	}
+	segmentFacets(w, s, files)
+}
+
+func segmentFacets(w io.Writer, s *schema.Schema, files []string) {
+	if len(s.Segments) == 0 {
+		return
+	}
+	c := New(s)
+	used := map[*schema.Segment]map[string]bool{}
+	for _, p := range files {
+		for _, sg := range c.segments(p) {
+			if used[sg.rule] == nil {
+				used[sg.rule] = map[string]bool{}
+			}
+			used[sg.rule][sg.name] = true
+		}
+	}
+	fmt.Fprintf(w, "\nsegments\n")
+	for _, rule := range s.Segments {
+		n := len(used[rule])
+		if rule.Pattern != nil {
+			fmt.Fprintf(w, "  %s  pattern %s: %d name(s) in use\n", rule.Path, rule.Pattern, n)
+			continue
+		}
+		var idle []string
+		for _, k := range sortedKeys(rule.Values) {
+			if !used[rule][k] {
+				idle = append(idle, k)
+			}
+		}
+		line := fmt.Sprintf("  %s  %s: %d name(s) in use", rule.Path, rule.Vocabulary, n)
+		if len(idle) > 0 {
+			line += fmt.Sprintf(", %d value(s) with no folder: %s", len(idle), strings.Join(idle, " · "))
+		}
+		fmt.Fprintln(w, line)
 	}
 }

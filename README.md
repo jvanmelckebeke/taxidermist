@@ -25,7 +25,7 @@ small complete one.
 
 ```
 taxonomy/
-├── scope.yaml           the directories it governs, and what to do with unknown doctypes
+├── scope.yaml           the directories it governs, unknown doctypes, folder-name rules
 ├── exempt.yaml          declared grandfathering: a path glob and the fields it may omit
 ├── traits.yaml          field bundles a doctype composes
 ├── singletons.yaml      shared fields that form no bundle, each naming its doctypes
@@ -49,7 +49,7 @@ A field is described by these keys:
 | key | means |
 |---|---|
 | `value` | `str`, `date`, `bool`, `int`, `float`, `list`, `object`, or an `a\|b` union. `float` accepts ints |
-| `definitions` | value → one-line meaning. The keys are the allowed values; there is no second list |
+| `definitions` | value → its meaning. The keys are the allowed values; there is no second list |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs are the allowed values, so the list grows by adding a page |
 | `schema` | for `value: object`, the nested keys, each described the same way |
@@ -59,6 +59,21 @@ A field is described by these keys:
 | `applies_to` | in `singletons.yaml`, the doctypes that carry the field |
 | `guidance` | what to put there, rendered on the format page |
 
+A meaning is a one-line string, or a mapping with `means:` and `not:` when a
+neighbouring value is easy to confuse with it:
+
+```yaml
+definitions:
+  hiring: Recruiting, interviews, onboarding.
+  infra:
+    means: Servers, deploys, the build.
+    not: Hiring for the infra team; that is `hiring`.
+```
+
+The format pages print `not:` in its own column. A vocabulary file in
+`vocabularies/` has the same `definitions:` mapping, and may nest values one level
+under group names; a group can't hold a value called `means` or `not`.
+
 A value can only exist once someone has written down what it means. If nothing fits,
 add the value to the schema with its definition, in the same commit that uses it.
 
@@ -67,13 +82,41 @@ has no type file a fault, or `ungoverned: report` to tally those documents inste
 Use `report` while adopting the schema on a tree full of doctypes you haven't
 written up yet.
 
+## Folder names
+
+`segments:` in `scope.yaml` ties the names directly under a directory to a vocabulary
+or a regular expression. The first path component under the directory is the name:
+a folder, or the stem of a page sitting directly there. `threads/russia-nato.md` and
+`threads/russia-nato/2026-05-01.md` both name `russia-nato`; deeper folders are not
+checked. `index.md` and `README.md` directly in the directory describe the directory
+itself and name nothing.
+
+```yaml
+segments:
+- path: framework/observations/threads/*
+  vocabulary: thread
+  field: threads
+- path: framework/observations/tickers/*
+  pattern: '^[0-9A-Z]+(\.[A-Z]+)?$'
+```
+
+A rule takes exactly one of `vocabulary` and `pattern`. A name off the list is a
+`segment` fault, so `themes/foobar/foobar.md` can't be committed until `foobar` is
+defined. A vocabulary value with no folder is fine; `check --facets` lists those.
+
+`field` is optional. When the file's value for that field differs from the folder
+it sits in (for a list, when the folder is not among its items), `check` and `hook`
+print a `mismatch` warning. Warnings never fail a run; they print as one line per
+folder, and `--verbose` lists every file.
+
 ## Commands
 
 ```
 taxidermist check [FILE ...]   check frontmatter (default: every governed root)
     --facets                   every key and value in use per doctype, drift first
     --ungoverned               list the files whose doctype has no schema
-    --kind value,missing       only these fault kinds
+    --kind value,missing       only these fault (or warning) kinds
+    --verbose                  list every warning and segment fault per file
     --json | --toon            machine-readable output
 taxidermist docs [--check]     generate taxonomy/format/, or fail if it is stale
 taxidermist lint               check the schema against its own invariants
@@ -83,17 +126,25 @@ taxidermist hook               the pre-commit gate
 Every command takes `--taxonomy DIR` (default `taxonomy`). Exit codes: 0 clean,
 1 faults, 2 a usage or schema error.
 
-`check` reports six kinds of fault: `value` (a value that isn't allowed), `type`,
+`check` reports seven kinds of fault: `value` (a value that isn't allowed), `type`,
 `missing` (a required field is absent), `unknown` (an undeclared key), `shape` (wrong
-keys inside an object or list item) and `parse` (a block that opens and doesn't
-parse, which leaves the file invisible to every reader).
+keys inside an object or list item), `parse` (a block that opens and doesn't parse,
+which leaves the file invisible to every reader) and `segment` (a folder name off its
+vocabulary). It also reports one kind of warning, `mismatch`, which doesn't change
+the exit code.
+
+`lint` also checks that each segment rule's directory exists under a governed root
+and that its `field` is one some doctype declares. A rule naming a vocabulary that
+doesn't exist, or a pattern that doesn't compile, is a schema error.
 
 ## Pre-commit
 
 `taxidermist hook` reads the staged file list itself. When anything under the
 taxonomy is staged, it runs `docs --check`. It then runs `check` on the staged
-markdown only. A repo-wide gate would block every commit until the whole backlog is
-fixed, and a hook like that ends up bypassed with `--no-verify` for good.
+markdown only, including the new path of a renamed file, so moving a page into an
+undefined folder is caught. A repo-wide gate would block every commit until the
+whole backlog is fixed, and a hook like that ends up bypassed with `--no-verify`
+for good.
 
 In a hand-written `.git/hooks/pre-commit`, or a tracked hooks directory:
 
@@ -106,7 +157,7 @@ With the [pre-commit](https://pre-commit.com) framework:
 ```yaml
 repos:
 - repo: https://github.com/jvanmelckebeke/taxidermist
-  rev: v0.1.0
+  rev: v0.2.0
   hooks:
   - id: taxidermist
     args: [--taxonomy, taxonomy]

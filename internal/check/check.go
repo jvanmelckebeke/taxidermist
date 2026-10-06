@@ -1,6 +1,6 @@
 // Package check validates frontmatter against a schema.
 //
-// Six kinds of fault:
+// Seven kinds of fault:
 //
 //	value    a value outside the field's allowed values for that doctype, a reference
 //	         naming no page, or a field on a doctype it does not apply to
@@ -11,6 +11,13 @@
 //	shape    an object field, or an item of a list of objects, whose keys are wrong
 //	parse    a block that opens and does not parse, so the file is invisible to
 //	         every reader while looking correct on disk
+//	segment  a folder name, or the stem of a page directly under a segment rule's
+//	         directory, that is not one of the rule's values
+//
+// One kind of warning, which never fails a run:
+//
+//	mismatch a file whose segment rule names a field, and whose value for that field
+//	         differs from the folder it sits in
 //
 // There is no union fallback. A field belongs to the doctypes that declare it, through
 // their own type file, a trait they compose, or a singleton's `applies_to`, and is an
@@ -30,7 +37,7 @@ import (
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
-var Kinds = []string{"value", "type", "missing", "unknown", "shape", "parse"}
+var Kinds = []string{"value", "type", "missing", "unknown", "shape", "parse", "segment"}
 
 type Fault struct {
 	Path  string // absolute
@@ -38,11 +45,13 @@ type Fault struct {
 	Field string
 	Value any // nil when there is no value to show
 	Why   string
+	Dir   string // a segment fault or mismatch warning: the folder the segment names, absolute
 }
 
 type Result struct {
 	Files      []string            // every file handed to the check, absolute
 	Faults     []Fault             // in file order
+	Warnings   []Fault             // in file order; never fail a run
 	Ungoverned map[string][]string // doctype -> files, when scope.yaml says `ungoverned: report`
 }
 
@@ -80,7 +89,26 @@ func (c *Checker) file(path string, r *Result) {
 	add := func(kind, field string, v any, why string) {
 		r.Faults = append(r.Faults, Fault{Path: path, Kind: kind, Field: field, Value: v, Why: why})
 	}
+	segs := c.segments(path)
+	for _, sg := range segs {
+		if why := c.segmentFault(sg.rule, sg.name); why != "" {
+			r.Faults = append(r.Faults, Fault{Path: path, Kind: "segment", Field: sg.rule.Path, Value: sg.name, Why: why, Dir: sg.dir(c.S)})
+		}
+	}
 	fm, err := frontmatter.Read(path)
+	if err == nil && fm != nil {
+		for _, sg := range segs {
+			if sg.rule.Field == "" {
+				continue
+			}
+			v, ok := fm.Get(sg.rule.Field)
+			if !ok || hasText(v, sg.name) {
+				continue
+			}
+			r.Warnings = append(r.Warnings, Fault{Path: path, Kind: "mismatch", Field: sg.rule.Field, Value: v,
+				Why: "the folder says `" + sg.name + "` (" + sg.rule.Path + ")", Dir: sg.dir(c.S)})
+		}
+	}
 	if err != nil {
 		add("parse", "<frontmatter>", nil, "the block opens and does not parse, so the file is invisible: "+firstLine(err.Error()))
 		return
@@ -152,6 +180,70 @@ func (c *Checker) file(path string, r *Result) {
 		}
 		c.field(name, v, spec, add)
 	}
+}
+
+// placed is a file's place under one segment rule: the name it sits under.
+type placed struct {
+	rule *schema.Segment
+	name string
+}
+
+func (p placed) dir(s *schema.Schema) string {
+	return filepath.Join(s.Base, filepath.FromSlash(p.rule.Dir), p.name)
+}
+
+// segments returns, for each rule whose directory holds the file, the first path
+// component below that directory: a folder name, or the stem of a page sitting
+// directly there. index.md and README.md directly in the directory describe the
+// directory itself and name no segment.
+func (c *Checker) segments(path string) []placed {
+	rel, err := filepath.Rel(c.S.Base, path)
+	if err != nil {
+		return nil
+	}
+	rel = filepath.ToSlash(rel)
+	var out []placed
+	for _, rule := range c.S.Segments {
+		rest, ok := strings.CutPrefix(rel, rule.Dir+"/")
+		if !ok {
+			continue
+		}
+		name, _, nested := strings.Cut(rest, "/")
+		if !nested {
+			name = strings.TrimSuffix(name, ".md")
+			if name == "index" || name == "README" {
+				continue
+			}
+		}
+		out = append(out, placed{rule, name})
+	}
+	return out
+}
+
+func (c *Checker) segmentFault(rule *schema.Segment, name string) string {
+	if rule.Pattern != nil {
+		if rule.Pattern.MatchString(name) {
+			return ""
+		}
+		return "the name does not match `" + rule.Pattern.String() + "`"
+	}
+	for _, d := range rule.Values {
+		if d.Key == name {
+			return ""
+		}
+	}
+	return "not a value of `" + rule.Vocabulary + "`, so the folder names nothing the vocabulary defines. Allowed: " +
+		strings.Join(sortedKeys(rule.Values), " · ")
+}
+
+// hasText is true when v, or any item of a list v, is written as want.
+func hasText(v any, want string) bool {
+	for _, x := range each(v) {
+		if value.IsScalar(x) && value.Text(x) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Checker) field(name string, v any, spec *schema.Field, add adder) {

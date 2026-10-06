@@ -64,12 +64,12 @@ The review a final note went through.
 
 Shared vocabulary from [../vocabularies/topic.yaml](../vocabularies/topic.yaml).
 
-| value | group | means |
-|---|---|---|
-| `garden` | home | Anything that grows. |
-| `hiring` | work | Recruiting, interviews, onboarding. |
-| `house` | home | Repairs and the things that break. |
-| `infra` | work | Servers, deploys, the build. |
+| value | group | means | not for |
+|---|---|---|---|
+| `garden` | home | Anything that grows. |  |
+| `hiring` | work | Recruiting, interviews, onboarding. |  |
+| `house` | home | Repairs and the things that break. |  |
+| `infra` | work | Servers, deploys, the build. | Hiring for the infra team; that is `hiring`. |
 
 ### `status`
 
