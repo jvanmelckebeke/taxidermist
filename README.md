@@ -90,22 +90,22 @@ written up yet.
 
 `segments:` in `scope.yaml` ties the names directly under a directory to a vocabulary
 or a regular expression. The first path component under the directory is the name:
-a folder, or the stem of a page sitting directly there. `threads/russia-nato.md` and
-`threads/russia-nato/2026-05-01.md` both name `russia-nato`; deeper folders are not
+a folder, or the stem of a page sitting directly there. `projects/infra.md` and
+`projects/infra/build-cache.md` both name `infra`; deeper folders are not
 checked. `index.md` and `README.md` directly in the directory describe the directory
 itself and name nothing.
 
 ```yaml
 segments:
-- path: framework/observations/threads/*
-  vocabulary: thread
-  field: threads
-- path: framework/observations/tickers/*
-  pattern: '^[0-9A-Z]+(\.[A-Z]+)?$'
+- path: projects/*
+  vocabulary: topic
+  field: topic
+- path: people/*
+  pattern: '^[a-z][a-z-]*$'
 ```
 
 A rule takes exactly one of `vocabulary` and `pattern`. A name off the list is a
-`segment` fault, so `themes/foobar/foobar.md` can't be committed until `foobar` is
+`segment` fault, so `projects/foobar/plan.md` can't be committed until `foobar` is
 defined. A vocabulary value with no folder is fine; `check --facets` lists those.
 
 `field` is optional. When the file's value for that field differs from the folder
