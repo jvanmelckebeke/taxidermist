@@ -18,6 +18,10 @@ go install github.com/jvanmelckebeke/taxidermist/cmd/taxidermist@latest
 
 From a clone: `go install ./cmd/taxidermist`.
 
+Each `v*` tag publishes a GitHub release with
+`taxidermist_<version>_<os>_<arch>.tar.gz` for linux/amd64, linux/arm64 and
+darwin/arm64, the binary at the archive root, and a `checksums.txt` of sha256 sums.
+
 ## The schema
 
 A `taxonomy/` directory, next to the content it governs. [`example/`](example/) is a
