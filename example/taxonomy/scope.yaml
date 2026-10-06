@@ -3,6 +3,16 @@ roots:
 - notes
 - people
 - meetings
+- projects
 
 # A file whose `type:` has no types/ file: `error` makes it a fault, `report` tallies it.
 ungoverned: error
+
+# Folder names that must be allowed values. `*` is the first path component under the
+# directory: a folder name, or the stem of a page sitting directly there.
+segments:
+- path: projects/*
+  vocabulary: topic
+  field: topic       # a file whose topic differs from its folder gets a warning
+- path: people/*
+  pattern: '^[a-z][a-z-]*$'

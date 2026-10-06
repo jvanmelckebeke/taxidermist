@@ -1,8 +1,11 @@
-# One topic list for every doctype that carries `topic:`.
+# One topic list for every doctype that carries `topic:`. A value is a one-line
+# string, or `means:` plus `not:` when a neighbour is easy to confuse with it.
 definitions:
   work:
     hiring: Recruiting, interviews, onboarding.
-    infra: Servers, deploys, the build.
+    infra:
+      means: Servers, deploys, the build.
+      not: Hiring for the infra team; that is `hiring`.
   home:
     garden: Anything that grows.
     house: Repairs and the things that break.

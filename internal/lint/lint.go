@@ -5,6 +5,8 @@ package lint
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -26,6 +28,8 @@ var Rules = []struct{ ID, Doc string }{
 	{"declared-once", "a doctype gets each field from exactly one of a trait, a singleton or its own file"},
 	{"trait-singleton-overlap", "no field is both a trait field and a singleton"},
 	{"guidance", "every field, and every key of an object or list item, has guidance"},
+	{"segment-path", "a segment rule's directory exists and lies under a governed root, or nothing checks it"},
+	{"segment-field", "a segment rule's field is one some doctype declares"},
 }
 
 func Run(s *schema.Schema) []Problem {
@@ -132,7 +136,28 @@ func Run(s *schema.Schema) []Problem {
 			add("trait-singleton-overlap", "`%s` is both a trait field and a singleton", f.Name)
 		}
 	}
+	for _, sg := range s.Segments {
+		dir := filepath.Join(s.Base, filepath.FromSlash(sg.Dir))
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			add("segment-path", "segment `%s`: %s does not exist", sg.Path, sg.Dir)
+		} else if !underRoot(s, sg.Dir) {
+			add("segment-path", "segment `%s` is under no root in scope.yaml, so check never reaches it", sg.Path)
+		}
+		if sg.Field != "" && len(s.Owners[sg.Field]) == 0 {
+			add("segment-field", "segment `%s` names field `%s`, which no doctype declares", sg.Path, sg.Field)
+		}
+	}
 	return out
+}
+
+func underRoot(s *schema.Schema, dir string) bool {
+	for _, r := range s.Roots {
+		r = filepath.ToSlash(filepath.Clean(r))
+		if dir == r || strings.HasPrefix(dir, r+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // eachField visits every field spec in the schema, nested keys included.

@@ -1,6 +1,7 @@
 // Package schema loads a taxonomy directory.
 //
-//	scope.yaml           the roots the schema governs, and how it treats doctypes it has no file for
+//	scope.yaml           the roots the schema governs, how it treats doctypes it has no file for,
+//	                     and the folders whose names must be vocabulary values
 //	exempt.yaml          declared grandfathering: a path glob and the fields it may omit
 //	traits.yaml          field bundles a doctype composes
 //	singletons.yaml      shared fields that form no bundle, each naming its doctypes
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -66,22 +68,62 @@ func strict(n *yaml.Node, what string, allowed ...string) error {
 type Def struct {
 	Key   string
 	Means string
+	Not   string // what the value is not for, where a neighbour is easy to confuse with it
 	Group string // the vocabulary group it sits under, if any
+}
+
+// Meaning is a definition: a one-line string, or a mapping with `means:` and an
+// optional `not:` that says what the value is not for.
+type Meaning struct {
+	Means string `yaml:"means"`
+	Not   string `yaml:"not"`
+}
+
+func (m *Meaning) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&m.Means)
+	}
+	if err := strict(n, "a definition", "means", "not"); err != nil {
+		return err
+	}
+	type plain Meaning
+	if err := n.Decode((*plain)(m)); err != nil {
+		return err
+	}
+	if m.Means == "" {
+		return fmt.Errorf("line %d: a definition mapping needs `means:`", n.Line)
+	}
+	return nil
+}
+
+// isMeaning tells a `{means, not}` definition from a vocabulary group, which is also
+// a mapping: a definition is the mapping with a `means` or `not` key, so neither can
+// be a value name inside a group.
+func isMeaning(n *yaml.Node) bool {
+	if n.Kind != yaml.MappingNode {
+		return true
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		if k := n.Content[i].Value; k == "means" || k == "not" {
+			return true
+		}
+	}
+	return false
 }
 
 // Field is a field spec, or a key of an object field's `schema:` or a list's `items:`.
 type Field struct {
-	Name        string          `yaml:"-"`
-	Value       string          `yaml:"value"` // a type name or an `a|b` union; empty checks nothing
-	Guidance    string          `yaml:"guidance"`
-	Definitions Ordered[string] `yaml:"definitions"`
-	Vocabulary  string          `yaml:"vocabulary"`
-	Dynamic     bool            `yaml:"dynamic"`
-	Schema      Ordered[*Field] `yaml:"schema"` // keys of a `value: object`
-	Items       Ordered[*Field] `yaml:"items"`  // keys of each mapping in a `value: list`
-	Reference   string          `yaml:"reference"`
-	Required    bool            `yaml:"required"`   // nested keys only
-	AppliesTo   []string        `yaml:"applies_to"` // singletons only
+	Name        string           `yaml:"-"`
+	Value       string           `yaml:"value"` // a type name or an `a|b` union; empty checks nothing
+	Guidance    string           `yaml:"guidance"`
+	Definitions Ordered[Meaning] `yaml:"definitions"`
+	Vocabulary  string           `yaml:"vocabulary"`
+	Dynamic     bool             `yaml:"dynamic"`
+	Schema      Ordered[*Field]  `yaml:"schema"` // keys of a `value: object`
+	Items       Ordered[*Field]  `yaml:"items"`  // keys of each mapping in a `value: list`
+	Reference   string           `yaml:"reference"`
+	Required    bool             `yaml:"required"`   // nested keys only
+	AppliesTo   []string         `yaml:"applies_to"` // singletons only
 	defs        []Def
 }
 
@@ -174,6 +216,33 @@ type Trait struct {
 	Fields []*Field
 }
 
+// Segment ties the names directly under a directory to a vocabulary or a pattern:
+// the first path component below Dir, a folder name or the stem of a page sitting
+// directly there, must be an allowed value.
+type Segment struct {
+	Path       string // as written, ending in `/*`
+	Dir        string // Path without the `/*`, relative to Base
+	Vocabulary string
+	Pattern    *regexp.Regexp
+	Field      string // a frontmatter field expected to agree with the folder; disagreeing warns
+	Values     []Def  // the vocabulary's definitions; nil for a pattern
+}
+
+type rawSegment struct {
+	Path       string `yaml:"path"`
+	Vocabulary string `yaml:"vocabulary"`
+	Pattern    string `yaml:"pattern"`
+	Field      string `yaml:"field"`
+}
+
+func (r *rawSegment) UnmarshalYAML(n *yaml.Node) error {
+	if err := strict(n, "a segment", "path", "vocabulary", "pattern", "field"); err != nil {
+		return err
+	}
+	type plain rawSegment
+	return n.Decode((*plain)(r))
+}
+
 type Exemption struct {
 	Paths string   `yaml:"paths"`
 	Omit  []string `yaml:"omit"`
@@ -185,6 +254,7 @@ type Schema struct {
 	Base         string // its parent: roots, references and exemptions resolve against it
 	Roots        []string
 	Ungoverned   string // "error" or "report"
+	Segments     []*Segment
 	Types        map[string]*Type
 	Traits       []*Trait
 	Singletons   []*Field
@@ -235,8 +305,9 @@ func Load(dir string) (*Schema, error) {
 	}
 
 	var scope struct {
-		Roots      []string `yaml:"roots"`
-		Ungoverned string   `yaml:"ungoverned"`
+		Roots      []string     `yaml:"roots"`
+		Ungoverned string       `yaml:"ungoverned"`
+		Segments   []rawSegment `yaml:"segments"`
 	}
 	if err := read(abs, "scope.yaml", &scope); err != nil {
 		return nil, err
@@ -264,6 +335,13 @@ func Load(dir string) (*Schema, error) {
 
 	if err := s.loadVocabularies(); err != nil {
 		return nil, err
+	}
+	for i, r := range scope.Segments {
+		seg, err := s.segment(r)
+		if err != nil {
+			return nil, errf("scope.yaml segment %d: %v", i+1, err)
+		}
+		s.Segments = append(s.Segments, seg)
 	}
 
 	var traits struct {
@@ -343,21 +421,21 @@ func (s *Schema) loadVocabularies() error {
 		var defs []Def
 		for i, key := range v.Definitions.Keys {
 			node := v.Definitions.Vals[i]
-			if node.Kind == yaml.MappingNode {
-				var group Ordered[string]
+			if !isMeaning(&node) {
+				var group Ordered[Meaning]
 				if err := node.Decode(&group); err != nil {
 					return errf("%s: group `%s`: %v", rel, key, err)
 				}
 				for j, k := range group.Keys {
-					defs = append(defs, Def{Key: k, Means: group.Vals[j], Group: key})
+					defs = append(defs, Def{Key: k, Means: group.Vals[j].Means, Not: group.Vals[j].Not, Group: key})
 				}
 				continue
 			}
-			var means string
-			if err := node.Decode(&means); err != nil {
+			var m Meaning
+			if err := node.Decode(&m); err != nil {
 				return errf("%s: `%s`: %v", rel, key, err)
 			}
-			defs = append(defs, Def{Key: key, Means: means})
+			defs = append(defs, Def{Key: key, Means: m.Means, Not: m.Not})
 		}
 		s.Vocabularies[name] = defs
 	}
@@ -378,7 +456,7 @@ func (s *Schema) bind(f *Field, where string) error {
 		f.defs = defs
 	}
 	for i, k := range f.Definitions.Keys {
-		f.defs = append(f.defs, Def{Key: k, Means: f.Definitions.Vals[i]})
+		f.defs = append(f.defs, Def{Key: k, Means: f.Definitions.Vals[i].Means, Not: f.Definitions.Vals[i].Not})
 	}
 	for _, sub := range append(append([]*Field(nil), f.Schema.Vals...), f.Items.Vals...) {
 		if err := s.bind(sub, where+": "+f.Name); err != nil {
@@ -386,6 +464,31 @@ func (s *Schema) bind(f *Field, where string) error {
 		}
 	}
 	return nil
+}
+
+func (s *Schema) segment(r rawSegment) (*Segment, error) {
+	dir, ok := strings.CutSuffix(r.Path, "/*")
+	if !ok || dir == "" || strings.ContainsAny(dir, "*?[") {
+		return nil, fmt.Errorf("`path: %s` must be a directory followed by `/*`, with no other wildcard", r.Path)
+	}
+	seg := &Segment{Path: r.Path, Dir: filepath.ToSlash(filepath.Clean(dir)), Vocabulary: r.Vocabulary, Field: r.Field}
+	switch {
+	case (r.Vocabulary == "") == (r.Pattern == ""):
+		return nil, fmt.Errorf("`%s` needs exactly one of `vocabulary:` and `pattern:`", r.Path)
+	case r.Vocabulary != "":
+		defs, ok := s.Vocabularies[r.Vocabulary]
+		if !ok {
+			return nil, fmt.Errorf("`%s` names vocabulary `%s`, and vocabularies/%s.yaml does not exist", r.Path, r.Vocabulary, r.Vocabulary)
+		}
+		seg.Values = defs
+	default:
+		re, err := regexp.Compile(r.Pattern)
+		if err != nil {
+			return nil, fmt.Errorf("`%s` pattern: %v", r.Path, err)
+		}
+		seg.Pattern = re
+	}
+	return seg, nil
 }
 
 func (s *Schema) loadType(file string) error {

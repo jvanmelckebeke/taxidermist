@@ -78,6 +78,12 @@ func TestEachRuleFires(t *testing.T) {
 		"trait-singleton-overlap": func(tax string) {
 			appendTo(t, filepath.Join(tax, "singletons.yaml"), "  tags:\n    value: list\n    applies_to: []\n    guidance: g\n")
 		},
+		"segment-path": func(tax string) {
+			replaceIn(t, filepath.Join(tax, "scope.yaml"), "- path: projects/*", "- path: projets/*")
+		},
+		"segment-field": func(tax string) {
+			replaceIn(t, filepath.Join(tax, "scope.yaml"), "field: topic", "field: topik")
+		},
 		"guidance": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "types", "person.yaml"), "    guidance: How you know them.\n", "")
 		},
@@ -94,5 +100,14 @@ func TestEachRuleFires(t *testing.T) {
 	}
 	if len(cases) != len(Rules) {
 		t.Errorf("%d rules, %d tested", len(Rules), len(cases))
+	}
+}
+
+func TestASegmentOutsideTheRootsIsFlagged(t *testing.T) {
+	got := rules(t, func(tax string) {
+		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- meetings\n- projects\n", "- meetings\n")
+	})
+	if len(got) != 1 || got[0] != "segment-path" {
+		t.Errorf("rules fired %v", got)
 	}
 }

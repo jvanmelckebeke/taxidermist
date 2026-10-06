@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -54,6 +55,23 @@ func TestHook(t *testing.T) {
 	}
 	gitIn(t, dir, "reset", "-q")
 
+	// A rename into a folder the vocabulary does not define is blocked.
+	gitIn(t, dir, "mv", "projects/infra/build-cache.md", "projects/build-cache.md")
+	code, _, errs = run(t, "hook")
+	if code != 1 || !strings.Contains(errs, `[segment] projects/*: "build-cache"`) {
+		t.Fatalf("rename into an undefined folder: exit %d\n%s", code, errs)
+	}
+	gitIn(t, dir, "reset", "-q", "--hard")
+
+	// A field that disagrees with its folder warns and does not block.
+	testutil.Write(t, dir, "projects/infra/x.md", "---\ntype: Project Plan\ntitle: x\ntopic: hiring\n---\n")
+	gitIn(t, dir, "add", "projects/infra/x.md")
+	code, _, errs = run(t, "hook")
+	if code != 0 || !strings.Contains(errs, "1 warning(s)") || !strings.Contains(errs, "projects/infra    1 file(s) say topic: hiring 1") {
+		t.Fatalf("mismatch: exit %d\n%s", code, errs)
+	}
+	gitIn(t, dir, "reset", "-q")
+
 	p := "taxonomy/types/person.yaml"
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "How you know them.", "How you met.", 1)), 0o644)
@@ -87,5 +105,47 @@ func TestCheckOutputs(t *testing.T) {
 	}
 	if code, _, errs := run(t, "check", "--json", "--toon"); code != 2 {
 		t.Errorf("exclusive flags: exit %d %s", code, errs)
+	}
+}
+
+func TestWarningsSummarisePerFolder(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	for i, topic := range []string{"hiring", "hiring", "garden"} {
+		testutil.Write(t, dir, "projects/infra/w"+strconv.Itoa(i)+".md", "---\ntype: Project Plan\ntitle: w\ntopic: "+topic+"\n---\n")
+	}
+	code, _, errs := run(t, "check")
+	if code != 0 || !strings.Contains(errs, "3 warning(s)") ||
+		!strings.Contains(errs, "projects/infra    3 file(s) say topic: hiring 2, garden 1") ||
+		strings.Contains(errs, "w0.md") {
+		t.Errorf("summary: exit %d\n%s", code, errs)
+	}
+	if _, _, errs := run(t, "check", "--verbose"); !strings.Contains(errs, "projects/infra/w0.md") ||
+		!strings.Contains(errs, "[mismatch] topic: \"hiring\"") {
+		t.Errorf("verbose:\n%s", errs)
+	}
+	if _, out, _ := run(t, "check", "--json"); !strings.Contains(out, `"kind": "mismatch"`) {
+		t.Errorf("json:\n%s", out)
+	}
+	if _, out, _ := run(t, "check", "--toon"); !strings.Contains(out, "warnings[3]{file,kind,field,value,why}:") {
+		t.Errorf("toon:\n%s", out)
+	}
+	if _, _, errs := run(t, "check", "--kind", "segment"); strings.Contains(errs, "warning") {
+		t.Errorf("--kind segment kept warnings:\n%s", errs)
+	}
+}
+
+func TestSegmentFaultsPrintOncePerFolder(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	for _, n := range []string{"a", "b", "c"} {
+		testutil.Write(t, dir, "projects/foobar/"+n+".md", "---\ntype: Project Plan\ntitle: x\ntopic: infra\n---\n")
+	}
+	code, _, errs := run(t, "check")
+	if code != 1 || strings.Count(errs, "[segment]") != 1 || !strings.Contains(errs, "projects/foobar/  (3 file(s))") {
+		t.Errorf("summary: exit %d\n%s", code, errs)
+	}
+	if _, _, errs := run(t, "check", "--verbose"); strings.Count(errs, "[segment]") != 3 {
+		t.Errorf("verbose:\n%s", errs)
 	}
 }

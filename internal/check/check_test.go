@@ -239,3 +239,105 @@ func TestFnmatch(t *testing.T) {
 		}
 	}
 }
+
+const plan = "---\ntype: Project Plan\ntitle: p\ntopic: %s\n---\n"
+
+func planOn(topic string) string { return strings.Replace(plan, "%s", topic, 1) }
+
+func TestAFolderMustBeAVocabularyValue(t *testing.T) {
+	expect(t, faults(t, "projects/infra/x.md", planOn("infra")))
+	expect(t, faults(t, "projects/foobar/foobar.md", planOn("infra")), "segment projects/*")
+	// Only the first component under the directory is a segment.
+	expect(t, faults(t, "projects/infra/foobar/x.md", planOn("infra")))
+}
+
+func TestAPageDirectlyUnderTheDirectoryIsNamedByItsStem(t *testing.T) {
+	expect(t, faults(t, "projects/garden.md", planOn("garden")))
+	expect(t, faults(t, "projects/foobar.md", planOn("infra")), "segment projects/*")
+	expect(t, faults(t, "projects/index.md", planOn("infra")))
+	expect(t, faults(t, "projects/README.md", planOn("infra")))
+}
+
+func TestASegmentHoldsWithoutFrontmatter(t *testing.T) {
+	expect(t, faults(t, "projects/foobar/x.md", "# just prose\n"), "segment projects/*")
+	expect(t, faults(t, "projects/foobar/x.md", "---\ntype: note\n"), "parse <frontmatter>", "segment projects/*")
+}
+
+func TestASegmentPattern(t *testing.T) {
+	body := "---\ntype: person\ntitle: Carol\nrole: friend\n---\n"
+	expect(t, faults(t, "people/carol.md", body))
+	expect(t, faults(t, "people/Carol.md", body), "segment people/*")
+}
+
+func run(t *testing.T, rel, body string) *Result {
+	t.Helper()
+	dir := testutil.CopyExample(t)
+	p := testutil.Write(t, dir, rel, body)
+	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(s).Run([]string{p})
+}
+
+func TestAFieldThatDisagreesWithItsFolderWarns(t *testing.T) {
+	r := run(t, "projects/infra/x.md", planOn("hiring"))
+	if len(r.Faults) != 0 || len(r.Warnings) != 1 {
+		t.Fatalf("faults %+v, warnings %+v", r.Faults, r.Warnings)
+	}
+	w := r.Warnings[0]
+	if w.Kind != "mismatch" || w.Field != "topic" || w.Value != "hiring" || !strings.HasSuffix(w.Dir, filepath.Join("projects", "infra")) {
+		t.Errorf("warning %+v", w)
+	}
+	if r := run(t, "projects/infra/x.md", planOn("infra")); len(r.Warnings) != 0 {
+		t.Errorf("agreeing file warned: %+v", r.Warnings)
+	}
+}
+
+func TestAListFieldAgreesWhenItHoldsTheFolder(t *testing.T) {
+	edit := func(body string) *Result {
+		t.Helper()
+		dir := testutil.CopyExample(t)
+		scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+		b, _ := os.ReadFile(scope)
+		os.WriteFile(scope, []byte(strings.Replace(string(b), "field: topic", "field: tags", 1)), 0o644)
+		p := testutil.Write(t, dir, "projects/infra/x.md", body)
+		s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return New(s).Run([]string{p})
+	}
+	if r := edit(planOn("infra")); len(r.Warnings) != 0 {
+		t.Errorf("no field, no warning: %+v", r.Warnings)
+	}
+	body := "---\ntype: Project Plan\ntitle: p\ntopic: infra\ntags: [ops, infra]\n---\n"
+	if r := edit(body); len(r.Warnings) != 0 {
+		t.Errorf("list holding the folder warned: %+v", r.Warnings)
+	}
+	body = "---\ntype: Project Plan\ntitle: p\ntopic: infra\ntags: [ops]\n---\n"
+	if r := edit(body); len(r.Warnings) != 1 {
+		t.Errorf("list without the folder: %+v", r.Warnings)
+	}
+}
+
+func TestFacetsListValuesWithNoFolder(t *testing.T) {
+	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Files(s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	Facets(&b, s, files)
+	for _, want := range []string{
+		"projects/*  topic: 2 name(s) in use, 2 value(s) with no folder: garden · house",
+		"people/*  pattern ^[a-z][a-z-]*$: 2 name(s) in use",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("facets lacks %q:\n%s", want, b.String())
+		}
+	}
+}

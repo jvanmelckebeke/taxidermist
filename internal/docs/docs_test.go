@@ -60,10 +60,15 @@ func TestPageContent(t *testing.T) {
 	}
 	for page, wants := range map[string][]string{
 		"note": {"type: note", "topic: <garden | hiring | house | infra>", "**`review` is required only when `status: final`.**",
-			"| `garden` | home | Anything that grows. |", "  open: <bool>", "  when: <date>   # optional"},
+			"| value | group | means | not for |",
+			"| `garden` | home | Anything that grows. |  |",
+			"| `infra` | work | Servers, deploys, the build. | Hiring for the infra team; that is `hiring`. |",
+			"  open: <bool>", "  when: <date>   # optional"},
 		"meeting":      {"  - what: <str>", "    done: <bool>   # optional", "[`people/`](../../people/)"},
 		"project-plan": {"type: Project Plan"},
-		"README":       {"- [`Project Plan`](project-plan.md)", "**Frontmatter describes the document.**"},
+		"README": {"- [`Project Plan`](project-plan.md)", "**Frontmatter describes the document.**",
+			"- `projects/<name>`: `<name>` is a value of [`topic`](../vocabularies/topic.yaml). A file whose `topic:` names a different value gets a warning.",
+			"- `people/<name>`: `<name>` matches `^[a-z][a-z-]*$`."},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(pages[page], w) {
@@ -75,5 +80,25 @@ func TestPageContent(t *testing.T) {
 		if strings.Contains(body, "—") {
 			t.Errorf("%s.md has an em dash", page)
 		}
+	}
+}
+
+func TestAListWithAVocabularyRendersAsAList(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "traits.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text",
+		"      value: list\n      vocabulary: topic\n      guidance: Free-text", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "tags: [<garden | hiring | house | infra>]   # optional"; !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
 	}
 }

@@ -1,0 +1,29 @@
+version: 2
+
+builds:
+- main: ./cmd/taxidermist
+  binary: taxidermist
+  env:
+  - CGO_ENABLED=0
+  goos: [linux, darwin]
+  goarch: [amd64, arm64]
+  ignore:
+  - goos: darwin
+    goarch: amd64
+  ldflags:
+  - -s -w -X github.com/jvanmelckebeke/taxidermist/internal/cli.Version={{.Version}}
+
+archives:
+- formats: [tar.gz]
+  name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  files:
+  - LICENSE
+  - NOTICE
+  - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github-native

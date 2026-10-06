@@ -48,6 +48,23 @@ func Pages(s *schema.Schema) (map[string]string, error) {
 	for _, dt := range s.Doctypes() {
 		idx = append(idx, "- [`"+dt+"`]("+s.Types[dt].Slug+".md)")
 	}
+	if len(s.Segments) > 0 {
+		idx = append(idx, "", "## Folders", "",
+			"A folder name directly under these directories, or the filename of a page sitting directly "+
+				"there, must be an allowed value. `index.md` and `README.md` there describe the directory itself.", "")
+		for _, sg := range s.Segments {
+			line := "- `" + sg.Dir + "/<name>`: "
+			if sg.Pattern != nil {
+				line += "`<name>` matches `" + sg.Pattern.String() + "`."
+			} else {
+				line += "`<name>` is a value of [`" + sg.Vocabulary + "`](../vocabularies/" + sg.Vocabulary + ".yaml)."
+			}
+			if sg.Field != "" {
+				line += " A file whose `" + sg.Field + ":` names a different value gets a warning."
+			}
+			idx = append(idx, line)
+		}
+	}
 	idx = append(idx, "", "## What holds on every page", "")
 	house, err := os.ReadFile(filepath.Join(s.Dir, HouseRules))
 	if err != nil && !os.IsNotExist(err) {
@@ -141,6 +158,8 @@ func render(s *schema.Schema, t *schema.Type) string {
 				}
 				L = append(L, lead+k.Name+": <"+k.Value+">"+optMark(k))
 			}
+		case len(v) > 0 && f.Value == "list":
+			L = append(L, name+": [<"+strings.Join(v, " | ")+">]"+tail)
 		case len(v) > 0:
 			L = append(L, name+": <"+strings.Join(v, " | ")+">"+tail)
 		case f.Value == "list":
@@ -188,7 +207,11 @@ func render(s *schema.Schema, t *schema.Type) string {
 				}
 				L = append(L, line)
 				for _, d := range k.Enum() {
-					L = append(L, "  - `"+d.Key+"`: "+d.Means)
+					line := "  - `" + d.Key + "`: " + d.Means
+					if d.Not != "" {
+						line += " Not for: " + d.Not
+					}
+					L = append(L, line)
 				}
 			}
 		} else if f.Reference != "" {
@@ -227,18 +250,30 @@ func render(s *schema.Schema, t *schema.Type) string {
 				grouped = grouped || d.Group != ""
 			}
 		}
-		if grouped {
-			L = append(L, "| value | group | means |", "|---|---|---|")
-		} else {
-			L = append(L, "| value | means |", "|---|---|")
+		nots := false
+		for _, d := range enum {
+			nots = nots || d.Not != ""
 		}
+		head, rule := "| value |", "|---|"
+		if grouped {
+			head, rule = head+" group |", rule+"---|"
+		}
+		head, rule = head+" means |", rule+"---|"
+		if nots {
+			head, rule = head+" not for |", rule+"---|"
+		}
+		L = append(L, head, rule)
 		for _, x := range v {
 			d := lookup(enum, x)
+			row := "| `" + x + "` |"
 			if grouped {
-				L = append(L, "| `"+x+"` | "+d.Group+" | "+cell(d.Means)+" |")
-			} else {
-				L = append(L, "| `"+x+"` | "+cell(d.Means)+" |")
+				row += " " + d.Group + " |"
 			}
+			row += " " + cell(d.Means) + " |"
+			if nots {
+				row += " " + cell(d.Not) + " |"
+			}
+			L = append(L, row)
 		}
 		L = append(L, "")
 	}

@@ -114,7 +114,8 @@ audited. Files outside the governed roots are dropped, so a caller can hand over
 every staged markdown file and scope.yaml decides which ones the schema governs.`, stderr)
 	facets := fs.Bool("facets", false, "print every key and value in use per doctype, drift first")
 	ungoverned := fs.Bool("ungoverned", false, "list the files whose doctype has no schema, instead of tallying them")
-	kinds := fs.String("kind", "", "only report these fault kinds, comma-separated: "+strings.Join(check.Kinds, ", "))
+	kinds := fs.String("kind", "", "only report these kinds, comma-separated: "+strings.Join(check.Kinds, ", ")+", mismatch")
+	verbose := fs.Bool("verbose", false, "list every warning and segment fault per file, not once per folder")
 	asJSON := fs.Bool("json", false, "JSON output")
 	asTOON := fs.Bool("toon", false, "TOON output: token-efficient, one row per fault")
 	files, err := parse(fs, args)
@@ -148,13 +149,7 @@ every staged markdown file and scope.yaml decides which ones the schema governs.
 		for _, k := range strings.Split(*kinds, ",") {
 			want[strings.TrimSpace(k)] = true
 		}
-		var kept []check.Fault
-		for _, f := range r.Faults {
-			if want[f.Kind] {
-				kept = append(kept, f)
-			}
-		}
-		r.Faults = kept
+		r.Faults, r.Warnings = only(r.Faults, want), only(r.Warnings, want)
 	}
 	switch {
 	case *asJSON:
@@ -162,12 +157,23 @@ every staged markdown file and scope.yaml decides which ones the schema governs.
 	case *asTOON:
 		writeTOON(stdout, r)
 	default:
-		writeText(stdout, stderr, s, r)
+		writeText(stdout, stderr, s, r, *verbose)
+		writeWarnings(stderr, s, r, *verbose)
 	}
 	if len(r.Faults) > 0 {
 		return 1
 	}
 	return 0
+}
+
+func only(fs []check.Fault, want map[string]bool) []check.Fault {
+	var kept []check.Fault
+	for _, f := range fs {
+		if want[f.Kind] {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }
 
 func flagExit(err error) int {
@@ -204,7 +210,9 @@ func shown(v any) string {
 	return value.Truncate(value.Text(v), 70)
 }
 
-func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result) {
+// writeText prints the faults per file. A segment fault is about a folder, so unless
+// verbose it prints once per folder with its file count rather than once per file.
+func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result, verbose bool) {
 	if len(r.Ungoverned) > 0 {
 		n := 0
 		var tally []string
@@ -235,9 +243,24 @@ func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result) {
 	}
 	fmt.Fprintf(stderr, "taxidermist: %d schema fault(s) in %d governed file(s) (%s):\n",
 		len(r.Faults), r.Governed(), strings.Join(tally, ", "))
+	inFolder := map[string]int{}
+	if !verbose {
+		for _, f := range r.Faults {
+			if f.Kind == "segment" {
+				inFolder[f.Dir+"\x00"+f.Field]++
+			}
+		}
+	}
 	last := ""
 	for _, f := range r.Faults {
-		if f.Path != last {
+		if n, ok := inFolder[f.Dir+"\x00"+f.Field]; ok && f.Kind == "segment" {
+			if n == 0 {
+				continue
+			}
+			inFolder[f.Dir+"\x00"+f.Field] = 0
+			fmt.Fprintf(stderr, "  %s/  (%d file(s))\n", schema.Display(f.Dir), n)
+			last = ""
+		} else if f.Path != last {
 			fmt.Fprintf(stderr, "  %s\n", schema.Display(f.Path))
 			last = f.Path
 		}
@@ -252,6 +275,69 @@ func writeText(stdout, stderr io.Writer, s *schema.Schema, r *check.Result) {
 		"is the declaration: a value with no definition does not exist.\n", schema.Display(s.Dir))
 }
 
+// writeWarnings summarises mismatch warnings as one line per folder, since a tree
+// that files by folder and also tags by field can disagree in dozens of files at
+// once. verbose lists every file instead.
+func writeWarnings(w io.Writer, s *schema.Schema, r *check.Result, verbose bool) {
+	if len(r.Warnings) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\ntaxidermist: %d warning(s): the file's field differs from the folder it sits in. "+
+		"Warnings never fail a check or block a commit.\n", len(r.Warnings))
+	if verbose {
+		last := ""
+		for _, f := range r.Warnings {
+			if f.Path != last {
+				fmt.Fprintf(w, "  %s\n", schema.Display(f.Path))
+				last = f.Path
+			}
+			fmt.Fprintf(w, "    [%s] %s: %s\n      %s\n", f.Kind, f.Field, strconv.Quote(shown(f.Value)), f.Why)
+		}
+		return
+	}
+	type folder struct {
+		dir, field string
+		n          int
+		vals       map[string]int
+		order      []string
+	}
+	var folders []*folder
+	byDir := map[string]*folder{}
+	for _, f := range r.Warnings {
+		dir := schema.Display(f.Dir)
+		key := dir + "\x00" + f.Field
+		fo := byDir[key]
+		if fo == nil {
+			fo = &folder{dir: dir, field: f.Field, vals: map[string]int{}}
+			byDir[key] = fo
+			folders = append(folders, fo)
+		}
+		fo.n++
+		v := shown(f.Value)
+		if fo.vals[v] == 0 {
+			fo.order = append(fo.order, v)
+		}
+		fo.vals[v]++
+	}
+	width := 0
+	for _, fo := range folders {
+		width = max(width, len(fo.dir))
+	}
+	for _, fo := range folders {
+		sort.SliceStable(fo.order, func(i, j int) bool { return fo.vals[fo.order[i]] > fo.vals[fo.order[j]] })
+		var parts []string
+		for i, v := range fo.order {
+			if i == 5 {
+				parts = append(parts, fmt.Sprintf("+%d more", len(fo.order)-5))
+				break
+			}
+			parts = append(parts, fmt.Sprintf("%s %d", v, fo.vals[v]))
+		}
+		fmt.Fprintf(w, "  %-*s  %3d file(s) say %s: %s\n", width, fo.dir, fo.n, fo.field, strings.Join(parts, ", "))
+	}
+	fmt.Fprintln(w, "  -> taxidermist check --verbose lists each file")
+}
+
 type jsonFault struct {
 	File  string  `json:"file"`
 	Kind  string  `json:"kind"`
@@ -264,15 +350,22 @@ func writeJSON(w io.Writer, r *check.Result) {
 	out := struct {
 		Governed   int                 `json:"governed"`
 		Faults     []jsonFault         `json:"faults"`
+		Warnings   []jsonFault         `json:"warnings"`
 		Ungoverned map[string][]string `json:"ungoverned"`
-	}{Governed: r.Governed(), Faults: []jsonFault{}, Ungoverned: map[string][]string{}}
-	for _, f := range r.Faults {
+	}{Governed: r.Governed(), Faults: []jsonFault{}, Warnings: []jsonFault{}, Ungoverned: map[string][]string{}}
+	conv := func(f check.Fault) jsonFault {
 		jf := jsonFault{File: schema.Display(f.Path), Kind: f.Kind, Field: f.Field, Why: f.Why}
 		if f.Value != nil {
 			v := value.Text(f.Value)
 			jf.Value = &v
 		}
-		out.Faults = append(out.Faults, jf)
+		return jf
+	}
+	for _, f := range r.Faults {
+		out.Faults = append(out.Faults, conv(f))
+	}
+	for _, f := range r.Warnings {
+		out.Warnings = append(out.Warnings, conv(f))
 	}
 	for dt, ps := range r.Ungoverned {
 		for _, p := range ps {
@@ -286,10 +379,16 @@ func writeJSON(w io.Writer, r *check.Result) {
 }
 
 func writeTOON(w io.Writer, r *check.Result) {
-	fmt.Fprintf(w, "faults[%d]{file,kind,field,value,why}:\n", len(r.Faults))
-	for _, f := range r.Faults {
-		fmt.Fprintf(w, "  %s,%s,%s,%s,%s\n", toon(schema.Display(f.Path)), toon(f.Kind), toon(f.Field),
-			toon(value.Truncate(shown(f.Value), 60)), toon(f.Why))
+	table := func(name string, fs []check.Fault) {
+		fmt.Fprintf(w, "%s[%d]{file,kind,field,value,why}:\n", name, len(fs))
+		for _, f := range fs {
+			fmt.Fprintf(w, "  %s,%s,%s,%s,%s\n", toon(schema.Display(f.Path)), toon(f.Kind), toon(f.Field),
+				toon(value.Truncate(shown(f.Value), 60)), toon(f.Why))
+		}
+	}
+	table("faults", r.Faults)
+	if len(r.Warnings) > 0 {
+		table("warnings", r.Warnings)
 	}
 }
 
@@ -443,12 +542,14 @@ Audit the backlog with "taxidermist check".`, stderr)
 			return 2
 		}
 		r := check.New(s).Run(paths)
+		defer writeWarnings(stderr, s, r, false)
 		if len(r.Faults) > 0 {
-			writeText(io.Discard, stderr, s, r)
+			writeText(io.Discard, stderr, s, r, false)
 			fmt.Fprintf(stderr, "\ncommit blocked: staged files do not match the schema in %s/.\n"+
 				"  -> [value] reuse a listed value, or add the new one with its one-line definition in this commit\n"+
 				"  -> [missing/unknown] the doctype's field set is required/optional in its types/ file\n"+
 				"  -> [type/shape] the field's declared type is its `value:`\n"+
+				"  -> [segment] move the file under a folder the vocabulary defines, or define the folder's name\n"+
 				"  -> or   git commit --no-verify\n", schema.Display(s.Dir))
 			code = 1
 		}
