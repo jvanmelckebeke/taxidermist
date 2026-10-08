@@ -30,6 +30,7 @@ var Rules = []struct{ ID, Doc string }{
 	{"guidance", "every field, and every key of an object or list item, has guidance"},
 	{"segment-path", "a segment rule's directory exists and lies under a governed root, or nothing checks it"},
 	{"segment-field", "a segment rule's field is one some doctype declares"},
+	{"excludes-declared", "a field's excludes names a field every doctype carrying it declares, and sits on a top-level field"},
 }
 
 func Run(s *schema.Schema) []Problem {
@@ -70,7 +71,23 @@ func Run(s *schema.Schema) []Problem {
 		}
 	}
 
+	for _, dt := range doctypes {
+		t := s.Types[dt]
+		declared := t.Declared()
+		for _, n := range append(append([]string(nil), t.Required...), t.Optional...) {
+			f := t.Resolved[n]
+			if f != nil && f.Excludes != "" && !declared[f.Excludes] {
+				add("excludes-declared", "`%s`: `%s` excludes `%s`, which `%s` does not declare", dt, n, f.Excludes, dt)
+			}
+		}
+	}
+
 	eachField(s, func(where string, f *schema.Field) {
+		for _, k := range append(append([]*schema.Field(nil), f.Schema.Vals...), f.Items.Vals...) {
+			if k.Excludes != "" {
+				add("excludes-declared", "%s.%s has excludes, which only a top-level field checks", where, k.Name)
+			}
+		}
 		if f.Guidance == "" {
 			add("guidance", "%s has no guidance, so its format page says the schema has no opinion", where)
 		}

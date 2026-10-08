@@ -3,7 +3,8 @@
 // Seven kinds of fault:
 //
 //	value    a value outside the field's allowed values for that doctype, a reference
-//	         naming no page, or a field on a doctype it does not apply to
+//	         naming no page, a field on a doctype it does not apply to, or a value
+//	         that repeats the field its spec `excludes`
 //	type     a value of the wrong type
 //	missing  a required field absent
 //	unknown  a key in neither the required nor the optional list: the one-off key
@@ -179,6 +180,20 @@ func (c *Checker) file(path string, r *Result) {
 			continue
 		}
 		c.field(name, v, spec, add)
+		if spec.Excludes == "" {
+			continue
+		}
+		other, ok := fm.Get(spec.Excludes)
+		if !ok {
+			continue
+		}
+		for _, x := range each(v) {
+			for _, y := range each(other) {
+				if x != nil && value.Text(x) == value.Text(y) {
+					add("value", name, x, "repeats the file's own `"+spec.Excludes+"`")
+				}
+			}
+		}
 	}
 }
 

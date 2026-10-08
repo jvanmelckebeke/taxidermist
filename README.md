@@ -59,6 +59,7 @@ A field is described by these keys:
 | `schema` | for `value: object`, the nested keys, each described the same way |
 | `items` | for a `value: list` of mappings, the keys of every element |
 | `required` | on a nested key: it must be present |
+| `excludes` | another field of the same document; no value here may repeat its value. `also_themes` with `excludes: theme` can't list the file's own `theme` |
 | `dynamic` | the value set changes too often to enumerate; the type is still checked |
 | `applies_to` | in `singletons.yaml`, the doctypes that carry the field |
 | `guidance` | what to put there, rendered on the format page |
@@ -130,16 +131,18 @@ taxidermist hook               the pre-commit gate
 Every command takes `--taxonomy DIR` (default `taxonomy`). Exit codes: 0 clean,
 1 faults, 2 a usage or schema error.
 
-`check` reports seven kinds of fault: `value` (a value that isn't allowed), `type`,
-`missing` (a required field is absent), `unknown` (an undeclared key), `shape` (wrong
-keys inside an object or list item), `parse` (a block that opens and doesn't parse,
-which leaves the file invisible to every reader) and `segment` (a folder name off its
-vocabulary). It also reports one kind of warning, `mismatch`, which doesn't change
+`check` reports seven kinds of fault: `value` (a value that isn't allowed, or one
+that repeats the field its spec `excludes`), `type`, `missing` (a required field is
+absent), `unknown` (an undeclared key), `shape` (wrong keys inside an object or list
+item), `parse` (a block that opens and doesn't parse, which leaves the file invisible
+to every reader) and `segment` (a folder name off its vocabulary). It also reports one kind of warning, `mismatch`, which doesn't change
 the exit code.
 
 `lint` also checks that each segment rule's directory exists under a governed root
 and that its `field` is one some doctype declares. A rule naming a vocabulary that
-doesn't exist, or a pattern that doesn't compile, is a schema error.
+doesn't exist, or a pattern that doesn't compile, is a schema error. It flags an
+`excludes` naming a field that some doctype carrying the field doesn't declare, and an
+`excludes` on a nested key, which nothing checks.
 
 ## Pre-commit
 
