@@ -191,6 +191,9 @@ func render(s *schema.Schema, t *schema.Type) string {
 		} else {
 			L = append(L, "_No guidance written yet. Add `guidance:` to this field in the schema._")
 		}
+		if f.Excludes != "" {
+			L = append(L, "", "Never repeats `"+f.Excludes+"`. Checked.")
+		}
 		if sub := nested(f); len(sub) > 0 {
 			L = append(L, "")
 			for _, k := range sub {

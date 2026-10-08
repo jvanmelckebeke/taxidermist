@@ -84,6 +84,10 @@ func TestEachRuleFires(t *testing.T) {
 		"segment-field": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "scope.yaml"), "field: topic", "field: topik")
 		},
+		"excludes-declared": func(tax string) {
+			// tags is on every doctype through core, topic only on note and Project Plan.
+			replaceIn(t, filepath.Join(tax, "traits.yaml"), "      value: list\n      guidance: Free-text", "      value: list\n      excludes: topic\n      guidance: Free-text")
+		},
 		"guidance": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "types", "person.yaml"), "    guidance: How you know them.\n", "")
 		},
@@ -108,6 +112,15 @@ func TestASegmentOutsideTheRootsIsFlagged(t *testing.T) {
 		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- meetings\n- projects\n", "- meetings\n")
 	})
 	if len(got) != 1 || got[0] != "segment-path" {
+		t.Errorf("rules fired %v", got)
+	}
+}
+
+func TestExcludesOnANestedKeyIsFlagged(t *testing.T) {
+	got := rules(t, func(tax string) {
+		replaceIn(t, filepath.Join(tax, "types", "note.yaml"), "        value: bool\n        required: true\n", "        value: bool\n        required: true\n        excludes: status\n")
+	})
+	if len(got) != 1 || got[0] != "excludes-declared" {
 		t.Errorf("rules fired %v", got)
 	}
 }

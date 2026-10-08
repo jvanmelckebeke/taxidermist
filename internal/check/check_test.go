@@ -157,6 +157,17 @@ func TestRequiredWhenBindsOnlyTheMatchingValue(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", note("status: draft\nreview:\n  open: true\n")))
 }
 
+func TestExcludesRejectsARepeatOfTheNamedField(t *testing.T) {
+	excl := func(dir string) {
+		p := filepath.Join(dir, "taxonomy", "traits.yaml")
+		b, _ := os.ReadFile(p)
+		os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text", "      value: list\n      excludes: topic\n      guidance: Free-text", 1)), 0o644)
+	}
+	expect(t, faults(t, "notes/x.md", note("tags: [infra, hiring]\n"), excl), "value tags")
+	expect(t, faults(t, "notes/x.md", note("tags: [infra, garden]\n"), excl))
+	expect(t, faults(t, "meetings/x.md", "---\ntype: meeting\ntitle: m\ndate: 2026-07-02\ntags: [hiring]\n---\n", excl))
+}
+
 func TestNoUnionFallback(t *testing.T) {
 	// `role` is a person's field. A note that lists it would need it declared for notes.
 	body := note("role: friend\n")

@@ -124,12 +124,13 @@ type Field struct {
 	Reference   string           `yaml:"reference"`
 	Required    bool             `yaml:"required"`   // nested keys only
 	AppliesTo   []string         `yaml:"applies_to"` // singletons only
+	Excludes    string           `yaml:"excludes"`   // a field whose value this one never repeats
 	defs        []Def
 }
 
 func (f *Field) UnmarshalYAML(n *yaml.Node) error {
 	if err := strict(n, "a field", "value", "guidance", "definitions", "vocabulary", "dynamic",
-		"schema", "items", "reference", "required", "applies_to"); err != nil {
+		"schema", "items", "reference", "required", "applies_to", "excludes"); err != nil {
 		return err
 	}
 	type plain Field
