@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -24,6 +25,17 @@ date: 2026-07-01
 // for each fault, sorted.
 func faults(t *testing.T, rel, body string, edit ...func(dir string)) []string {
 	t.Helper()
+	var out []string
+	for _, f := range checked(t, rel, body, edit...) {
+		out = append(out, f.Kind+" "+f.Field)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checked checks one file written into a copy of example/ and returns its faults.
+func checked(t *testing.T, rel, body string, edit ...func(dir string)) []Fault {
+	t.Helper()
 	dir := testutil.CopyExample(t)
 	for _, e := range edit {
 		e(dir)
@@ -37,12 +49,7 @@ func faults(t *testing.T, rel, body string, edit ...func(dir string)) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []string
-	for _, f := range New(s).Run(files).Faults {
-		out = append(out, f.Kind+" "+f.Field)
-	}
-	sort.Strings(out)
-	return out
+	return New(s).Run(files).Faults
 }
 
 func expect(t *testing.T, got []string, want ...string) {
@@ -350,5 +357,113 @@ func TestFacetsListValuesWithNoFolder(t *testing.T) {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("facets lacks %q:\n%s", want, b.String())
 		}
+	}
+}
+
+// A recipe lives in notes/recipes/<kind>/; `course: main` makes the kind required.
+const recipeType = `traits: [core]
+required: [type, title]
+optional: [tags, kind, course]
+required_when:
+  kind:
+    course: main
+directory: notes/recipes/{kind}
+fields:
+  kind: {value: str}
+  course: {value: str}
+`
+
+func withRecipes(dir string) {
+	put(dir, "taxonomy/types/recipe.yaml", recipeType)
+}
+
+func recipe(extra string) string { return "---\ntype: recipe\ntitle: r\n" + extra + "---\n" }
+
+func TestAPageLivesInTheDirectoryItsTypeNames(t *testing.T) {
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), withRecipes))
+	expect(t, faults(t, "notes/recipes/bread/x.md", recipe("kind: soup\n"), withRecipes), "value kind")
+	expect(t, faults(t, "notes/recipes/soup/deeper/x.md", recipe("kind: soup\n"), withRecipes), "value kind")
+	expect(t, faults(t, "notes/x.md", recipe("kind: soup\n"), withRecipes), "value kind")
+
+	f := checked(t, "notes/recipes/bread/x.md", recipe("kind: soup\n"), withRecipes)
+	if len(f) != 1 || !regexp.MustCompile(`^the page is in \S*notes/recipes/bread/ but its frontmatter puts it in \S*notes/recipes/soup/$`).MatchString(f[0].Why) {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAnOptionalAbsentPlaceholderDropsOutOfThePath(t *testing.T) {
+	expect(t, faults(t, "notes/recipes/x.md", recipe(""), withRecipes))
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe(""), withRecipes), "value directory")
+}
+
+func TestARequiredAbsentPlaceholderIsOnlyMissing(t *testing.T) {
+	expect(t, faults(t, "notes/recipes/x.md", recipe("course: main\n"), withRecipes), "missing kind")
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("course: main\nkind: soup\n"), withRecipes))
+}
+
+func TestADirectoryWithNoPlaceholder(t *testing.T) {
+	fixed := func(dir string) {
+		put(dir, "taxonomy/types/recipe.yaml", strings.Replace(recipeType, "/{kind}", "", 1))
+	}
+	expect(t, faults(t, "notes/recipes/x.md", recipe("kind: soup\n"), fixed))
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), fixed), "value directory")
+}
+
+func TestASlugIsUniqueUnderTheFixedPrefix(t *testing.T) {
+	twin := func(rel string) func(string) {
+		return func(dir string) { put(dir, rel, recipe("kind: bread\n")) }
+	}
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), withRecipes, twin("notes/recipes/bread/x.md")),
+		"value <slug>")
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), withRecipes, twin("notes/recipes/bread/y.md")))
+	// Outside the prefix, a page with the same stem is no twin.
+	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), withRecipes, twin("notes/x.md")))
+	// Every kind folder has its own index.md.
+	expect(t, faults(t, "notes/recipes/soup/index.md", recipe("kind: soup\n"), withRecipes, twin("notes/recipes/bread/index.md")))
+
+	f := checked(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), withRecipes, twin("notes/recipes/bread/x.md"))
+	if len(f) != 1 || f[0].Value != "x" || !regexp.MustCompile(`^also used by \S*notes/recipes/bread/x\.md; a slug is unique across \S*notes/recipes/$`).MatchString(f[0].Why) {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAReferenceReachesPagesInSubfolders(t *testing.T) {
+	carol := func(dir string) { put(dir, "people/team/carol.md", "---\ntype: person\ntitle: Carol\n---\n") }
+	expect(t, faults(t, "notes/x.md", note("people: [alice, carol]\n"), carol))
+	expect(t, faults(t, "notes/x.md", note("people: [team]\n"), carol), "value people")
+}
+
+// withProject gives a note a `project:` naming a folder under projects/.
+func withProject(dir string) {
+	p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+	b, _ := os.ReadFile(p)
+	b = []byte(strings.Replace(string(b), "optional:\n", "optional:\n- project\n", 1))
+	b = []byte(strings.Replace(string(b), "fields:\n", "fields:\n  project:\n    value: str\n    reference: projects/*\n", 1))
+	put(dir, "taxonomy/types/note.yaml", string(b))
+	put(dir, "projects/infra/index.md", "# infra\n")
+	put(dir, "projects/garden/plan.md", "# no index\n")
+}
+
+func TestADirectoryReferenceNamesAFolderWithAnIndex(t *testing.T) {
+	expect(t, faults(t, "notes/x.md", note("project: infra\n"), withProject))
+	// A page inside the folder, a page directly under projects/, and a folder with no index.md.
+	expect(t, faults(t, "notes/x.md", note("project: build-cache\n"), withProject), "value project")
+	expect(t, faults(t, "notes/x.md", note("project: hiring\n"), withProject), "value project")
+	expect(t, faults(t, "notes/x.md", note("project: garden\n"), withProject), "value project")
+
+	f := checked(t, "notes/x.md", note("project: garden\n"), withProject)
+	if len(f) != 1 || !regexp.MustCompile(`^no page at \S*projects/garden/index\.md\. \S*projects/ has 1 directories with an index\.md$`).MatchString(f[0].Why) {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+// put writes a file for an edit, which has no *testing.T to fail.
+func put(dir, rel, body string) {
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		panic(err)
 	}
 }

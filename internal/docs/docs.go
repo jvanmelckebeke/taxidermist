@@ -206,7 +206,7 @@ func render(s *schema.Schema, t *schema.Type) string {
 					line += ": " + k.Guidance
 				}
 				if k.Reference != "" {
-					line += " Any page under [`" + k.Reference + "/`](../../" + k.Reference + "/), checked."
+					line += " Any " + refTarget(k.Reference) + ", checked."
 				}
 				L = append(L, line)
 				for _, d := range k.Enum() {
@@ -218,8 +218,12 @@ func render(s *schema.Schema, t *schema.Type) string {
 				}
 			}
 		} else if f.Reference != "" {
-			L = append(L, "", "Values: any page under [`"+f.Reference+"/`](../../"+f.Reference+"/), "+
-				"by its filename without `.md`. Checked, so a name that resolves to no page is a fault.")
+			by := "by its filename without `.md`"
+			if strings.HasSuffix(f.Reference, "/*") {
+				by = "by its directory name"
+			}
+			L = append(L, "", "Values: any "+refTarget(f.Reference)+", "+
+				by+". Checked, so a name that resolves to no page is a fault.")
 		} else if len(v) > 0 {
 			ticked := make([]string, len(v))
 			for i, x := range v {
@@ -376,4 +380,14 @@ func Sync(s *schema.Schema, check bool) (stale []string, written, total int, err
 		}
 	}
 	return stale, written, len(pages), nil
+}
+
+// refTarget names what a `reference:` resolves against, linked: the pages anywhere
+// under a directory, or for `<dir>/*`, the directories directly under it that hold
+// an index.md.
+func refTarget(ref string) string {
+	if dir, ok := strings.CutSuffix(ref, "/*"); ok {
+		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`"
+	}
+	return "page under [`" + ref + "/`](../../" + ref + "/)"
 }
