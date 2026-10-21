@@ -19,15 +19,9 @@ import (
 // A placeholder whose field is optional and absent drops out of the path, so
 // `conventions/{kind}` puts a convention with no kind directly in conventions/.
 func (c *Checker) directory(path string, fm *frontmatter.Doc, pattern string, required []string, add adder) {
-	var parts, fields, prefix []string
-	fixed := true
+	var parts, fields []string
 	for _, part := range strings.Split(pattern, "/") {
 		names := schema.Placeholder.FindAllStringSubmatch(part, -1)
-		if len(names) > 0 {
-			fixed = false
-		} else if fixed {
-			prefix = append(prefix, part)
-		}
 		if len(names) == 1 && names[0][0] == part && !present(fm, names[0][1]) && !contains(required, names[0][1]) {
 			continue
 		}
@@ -54,7 +48,7 @@ func (c *Checker) directory(path string, fm *frontmatter.Doc, pattern string, re
 	if stem == "index" {
 		return
 	}
-	base := filepath.Join(c.S.Base, filepath.FromSlash(strings.Join(prefix, "/")))
+	base := filepath.Join(c.S.Base, filepath.FromSlash(schema.DirectoryPrefix(pattern)))
 	var twins []string
 	for _, p := range c.pageStems(base)[stem] {
 		if p != path {
