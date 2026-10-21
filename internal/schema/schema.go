@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -32,6 +33,7 @@ type Schema struct {
 	Base         string // its parent: roots, references and exemptions resolve against it
 	Roots        []string
 	Ungoverned   string // "error" or "report"
+	Invocation   string // how this repo runs taxidermist, with `{command}` where the subcommand goes
 	Segments     []*Segment
 	Types        map[string]*Type
 	Traits       []*Trait
@@ -39,6 +41,12 @@ type Schema struct {
 	Vocabularies map[string][]Def
 	Exempt       []Exemption
 	Owners       map[string]map[string]bool // field -> doctypes that declare it
+}
+
+// Command is how a reader of the generated pages runs one taxidermist subcommand in
+// this repo, from scope.yaml's `invocation:`.
+func (s *Schema) Command(sub string) string {
+	return strings.Replace(s.Invocation, "{command}", sub, 1)
 }
 
 // Doctypes returns the doctype names, sorted.
@@ -85,6 +93,7 @@ func Load(dir string) (*Schema, error) {
 	var scope struct {
 		Roots      []string     `yaml:"roots"`
 		Ungoverned string       `yaml:"ungoverned"`
+		Invocation string       `yaml:"invocation"`
 		Segments   []rawSegment `yaml:"segments"`
 	}
 	if err := read(abs, "scope.yaml", &scope); err != nil {
@@ -96,6 +105,13 @@ func Load(dir string) (*Schema, error) {
 	}
 	if s.Ungoverned != "error" && s.Ungoverned != "report" {
 		return nil, errf("scope.yaml sets `ungoverned: %s`; it takes `error` or `report`.", s.Ungoverned)
+	}
+	s.Invocation = strings.TrimSpace(scope.Invocation)
+	if s.Invocation == "" {
+		s.Invocation = "taxidermist"
+	}
+	if !strings.Contains(s.Invocation, "{command}") {
+		s.Invocation += " {command}"
 	}
 
 	var exempt struct {

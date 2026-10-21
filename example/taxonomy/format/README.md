@@ -21,6 +21,6 @@ A folder name directly under these directories, or the filename of a page sittin
 **Frontmatter describes the document.** The body carries the content; frontmatter is
 what a query filters on.
 
-**A field's `definitions` keys are its allowed values.** There is no second list, so a value cannot exist until someone writes down what it means. Prefer an existing one, because a near-synonym fragments every filter. If nothing fits, add it to the right file under [..](../README.md) with its one line in the same change, then run `taxidermist docs`. `taxidermist check` blocks the commit otherwise.
+**A field's `definitions` keys are its allowed values.** There is no second list, so a value cannot exist until someone writes down what it means. Prefer an existing one, because a near-synonym fragments every filter. If nothing fits, add it to the right file under [..](../README.md) with its one line in the same change, then run `taxidermist docs`. `taxidermist check` fails otherwise.
 
 **YAML frontmatter is hand-written and fails silently.** A block that opens and does not parse leaves the file invisible to every tool that reads it, while it looks correct on disk. An unescaped quote, or a `: ` inside an unquoted scalar, is where it usually breaks.

@@ -97,6 +97,13 @@ has no type file a fault, or `ungoverned: report` to tally those documents inste
 Use `report` while adopting the schema on a tree full of doctypes you haven't
 written up yet.
 
+`invocation:` in `scope.yaml` is how the repo runs taxidermist, and the generated
+pages print it wherever they name a command. `{command}` marks where the subcommand
+goes; without it the subcommand is appended. It defaults to `taxidermist`. A repo
+with a pinned wrapper sets `invocation: bin/taxidermist`, or
+`invocation: tools/taxidermist {command} --taxonomy kb/taxonomy` when the taxonomy is
+not at `./taxonomy`.
+
 ## Folder names
 
 `segments:` in `scope.yaml` ties the names directly under a directory to a vocabulary
