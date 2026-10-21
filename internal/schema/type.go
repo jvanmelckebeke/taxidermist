@@ -131,6 +131,20 @@ func (s *Schema) loadType(file string) error {
 // Placeholder is a `{field}` in a type's `directory:`.
 var Placeholder = regexp.MustCompile(`\{(\w+)\}`)
 
+// DirectoryPrefix is the part of a `directory:` pattern before its first placeholder,
+// the folder under which a page's slug must be unique. Empty when the pattern opens
+// with a placeholder.
+func DirectoryPrefix(pattern string) string {
+	var fixed []string
+	for _, part := range strings.Split(pattern, "/") {
+		if Placeholder.MatchString(part) {
+			break
+		}
+		fixed = append(fixed, part)
+	}
+	return strings.Join(fixed, "/")
+}
+
 // checkDirectory rejects a `directory:` placeholder naming a field the doctype never
 // carries, which would otherwise drop out of the path and check nothing.
 func (t *Type) checkDirectory(rel string) error {

@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -98,6 +99,10 @@ func render(s *schema.Schema, t *schema.Type) string {
 			parts = append(parts, "`"+w+": "+value.Text(c.When.Vals[i])+"`")
 		}
 		L = append(L, "**`"+c.Field+"` is required only when "+strings.Join(parts, ", ")+".**", "")
+	}
+
+	if t.Directory != "" {
+		L = append(L, whereItLives(t), "")
 	}
 
 	L = append(L, "## What to put in each field", "")
@@ -264,4 +269,27 @@ func refTarget(ref string) string {
 		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`"
 	}
 	return "page under [`" + ref + "/`](../../" + ref + "/)"
+}
+
+// whereItLives says which folder a doctype's pages sit in, from its `directory:`.
+func whereItLives(t *schema.Type) string {
+	line := "The page lives at `" + t.Directory + "/<slug>.md`"
+	if schema.Placeholder.MatchString(t.Directory) {
+		line += ", filled from its own frontmatter"
+	}
+	if prefix := schema.DirectoryPrefix(t.Directory); prefix != "" {
+		line += ", and its slug is unique under [`" + prefix + "/`](../../" + prefix + "/)."
+	} else {
+		line += ", and its slug is unique under [the taxonomy's parent](../../)."
+	}
+	for _, part := range strings.Split(t.Directory, "/") {
+		m := schema.Placeholder.FindStringSubmatch(part)
+		if m == nil || m[0] != part || slices.Contains(t.Required, m[1]) {
+			continue
+		}
+		if rest := strings.Trim(strings.Replace("/"+t.Directory+"/", "/"+part+"/", "/", 1), "/"); rest != "" {
+			line += " A page with no `" + m[1] + "` sits directly in `" + rest + "/`."
+		}
+	}
+	return line + " A page anywhere else fails the check."
 }

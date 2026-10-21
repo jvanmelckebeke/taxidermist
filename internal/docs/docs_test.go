@@ -142,3 +142,38 @@ func TestADirectoryReferenceRendersAsDirectories(t *testing.T) {
 		t.Errorf("note.md lacks %q", want)
 	}
 }
+
+func TestADirectoryRendersWhereThePageLives(t *testing.T) {
+	cases := []struct{ directory, want string }{
+		{"projects/{topic}", "The page lives at `projects/{topic}/<slug>.md`, filled from its own frontmatter, " +
+			"and its slug is unique under [`projects/`](../../projects/). A page anywhere else fails the check."},
+		{"projects/{status}", "The page lives at `projects/{status}/<slug>.md`, filled from its own frontmatter, " +
+			"and its slug is unique under [`projects/`](../../projects/). A page with no `status` sits directly in " +
+			"`projects/`. A page anywhere else fails the check."},
+		{"projects", "The page lives at `projects/<slug>.md`, and its slug is unique under " +
+			"[`projects/`](../../projects/). A page anywhere else fails the check."},
+	}
+	for _, c := range cases {
+		dir := testutil.CopyExample(t)
+		tax := filepath.Join(dir, "taxonomy")
+		p := filepath.Join(tax, "types", "project-plan.yaml")
+		b, _ := os.ReadFile(p)
+		body := strings.Replace(string(b), "optional:\n- tags\n", "optional:\n- tags\n- status\n", 1)
+		body = strings.Replace(body, "fields: {}", "directory: "+c.directory+"\nfields:\n  status: {value: str}", 1)
+		os.WriteFile(p, []byte(body), 0o644)
+		s, err := schema.Load(tax)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, err := Pages(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(pages["project-plan"], "\n"+c.want+"\n") {
+			t.Errorf("%s: project-plan.md lacks %q", c.directory, c.want)
+		}
+		if strings.Contains(pages["note"], "lives at") {
+			t.Errorf("%s: note.md, which declares no directory, says where it lives", c.directory)
+		}
+	}
+}
