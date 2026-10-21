@@ -26,10 +26,16 @@ func TestLoadErrors(t *testing.T) {
 		{"unknown vocabulary", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, vocabulary: nope}\n", "vocabularies/nope.yaml does not exist"},
 		{"definitions and vocabulary", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, vocabulary: topic, definitions: {a: b}}\n", "both `definitions:` and `vocabulary:`"},
 		{"bad ungoverned", "scope.yaml", "roots: [notes]\nungoverned: ignore\n", "takes `error` or `report`"},
-		{"vocabulary without definitions", "vocabularies/v.yaml", "values: [a]\n", "no `definitions:` mapping"},
+		{"vocabulary without definitions", "vocabularies/v.yaml", "definitions: {}\n", "no `definitions:` mapping"},
 		{"unparseable", "traits.yaml", "traits: [\n", "traits.yaml"},
 		{"typo in a field spec", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, defintions: {a: b}}\n", "unknown key `defintions`"},
 		{"typo in a type file", "types/x.yaml", "requried: [type]\n", "unknown key `requried`"},
+		{"unknown key in scope.yaml", "scope.yaml", "roots: [notes]\nungoverend: report\n", "scope.yaml has unknown key `ungoverend`"},
+		{"unknown key in exempt.yaml", "exempt.yaml", "exempt: []\nexemptions: []\n", "exempt.yaml has unknown key `exemptions`"},
+		{"typo in an exemption", "exempt.yaml", "exempt:\n- {paths: notes/**, omti: [topic]}\n", "unknown key `omti`"},
+		{"unknown key in traits.yaml", "traits.yaml", "traits: {}\nfields: {}\n", "traits.yaml has unknown key `fields`"},
+		{"unknown key in singletons.yaml", "singletons.yaml", "fields: {}\ntraits: {}\n", "singletons.yaml has unknown key `traits`"},
+		{"unknown key in a vocabulary", "vocabularies/v.yaml", "definitions: {a: b}\nvalues: [a]\n", "vocabularies/v.yaml has unknown key `values`"},
 		{"directory placeholder undeclared", "types/x.yaml", "required: [type]\ndirectory: x/{kind}\n", "fills `{kind}` from a field the doctype does not declare"},
 		{"directory with a wildcard", "types/x.yaml", "required: [type]\ndirectory: x/*\n", "no wildcard"},
 	}
@@ -37,6 +43,14 @@ func TestLoadErrors(t *testing.T) {
 		err := loadWith(t, c.rel, c.body)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
+		}
+	}
+}
+
+func TestAnEmptyFileIsEmpty(t *testing.T) {
+	for _, body := range []string{"", "# nothing yet\n", "---\n"} {
+		if err := loadWith(t, "exempt.yaml", body); err != nil {
+			t.Errorf("exempt.yaml %q: %v", body, err)
 		}
 	}
 }

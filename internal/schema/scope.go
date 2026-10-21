@@ -43,6 +43,14 @@ type Exemption struct {
 	Why   string   `yaml:"why"`
 }
 
+func (e *Exemption) UnmarshalYAML(n *yaml.Node) error {
+	if err := strict(n, "an exemption", "paths", "omit", "why"); err != nil {
+		return err
+	}
+	type plain Exemption
+	return n.Decode((*plain)(e))
+}
+
 func (s *Schema) segment(r rawSegment) (*Segment, error) {
 	dir, ok := strings.CutSuffix(r.Path, "/*")
 	if !ok || dir == "" || strings.ContainsAny(dir, "*?[") {

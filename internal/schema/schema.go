@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -183,7 +184,8 @@ func Load(dir string) (*Schema, error) {
 	return s, nil
 }
 
-// read decodes one schema file. A missing file is empty.
+// read decodes one schema file. A missing file is empty. A top-level key the struct
+// has no `yaml:` tag for is an error, unless the type checks its own keys.
 func read(dir, rel string, out any) error {
 	raw, err := os.ReadFile(filepath.Join(dir, rel))
 	if errors.Is(err, os.ErrNotExist) {
@@ -192,8 +194,32 @@ func read(dir, rel string, out any) error {
 	if err != nil {
 		return err
 	}
-	if err := yaml.Unmarshal(raw, out); err != nil {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return errf("%s: %v", rel, err)
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Tag == "!!null" {
+		return nil
+	}
+	if _, own := out.(yaml.Unmarshaler); !own {
+		if err := strict(doc.Content[0], rel, keys(out)...); err != nil {
+			return errf("%s", err)
+		}
+	}
+	if err := doc.Content[0].Decode(out); err != nil {
 		return errf("%s: %v", rel, err)
 	}
 	return nil
+}
+
+// keys returns the `yaml:` names of the fields of the struct out points to.
+func keys(out any) []string {
+	t := reflect.TypeOf(out).Elem()
+	var ks []string
+	for i := 0; i < t.NumField(); i++ {
+		if k, _, _ := strings.Cut(t.Field(i).Tag.Get("yaml"), ","); k != "" && k != "-" {
+			ks = append(ks, k)
+		}
+	}
+	return ks
 }

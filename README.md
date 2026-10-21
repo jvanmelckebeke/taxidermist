@@ -196,8 +196,9 @@ Frontmatter is parsed as YAML 1.2 by [yaml.v3](https://github.com/yaml/go-yaml).
 it fails a `date` field. `yes` and `off` are strings, not booleans: write `true` and
 `false`. A key written twice in one block does not parse.
 
-In a field spec or a type file, an unknown key is a schema error, so a typo like
-`defintions:` stops the load instead of leaving a field that checks nothing.
+An unknown key anywhere in the taxonomy's YAML is a schema error, so a typo like
+`defintions:` stops the load instead of leaving a field that checks nothing, and a
+setting this version does not have fails instead of looking like it took effect.
 
 ## License
 
