@@ -122,3 +122,23 @@ func TestExcludesRendersOnTheFieldsEntry(t *testing.T) {
 		t.Errorf("note.md lacks %q", want)
 	}
 }
+
+func TestADirectoryReferenceRendersAsDirectories(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "singletons.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people/*\n", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Values: any directory under [`people/`](../../people/) that holds an `index.md`, by its directory name."
+	if !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
+	}
+}

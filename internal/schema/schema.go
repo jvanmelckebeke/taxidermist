@@ -177,12 +177,13 @@ type Type struct {
 	Required     []string          `yaml:"required"`
 	Optional     []string          `yaml:"optional"`
 	RequiredWhen []Condition       `yaml:"-"`
+	Directory    string            `yaml:"directory"` // where its pages live; `{field}` fills from the page
 	Fields       Ordered[*Field]   `yaml:"fields"`
 	Resolved     map[string]*Field `yaml:"-"` // own fields, then singletons, then traits
 }
 
 func (t *Type) UnmarshalYAML(n *yaml.Node) error {
-	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "fields"); err != nil {
+	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "fields"); err != nil {
 		return err
 	}
 	type plain Type
@@ -507,6 +508,9 @@ func (s *Schema) loadType(file string) error {
 	if other, dup := s.Types[t.Doctype]; dup {
 		return errf("types/%s.yaml and %s both declare `type: %s`.", other.Slug, rel, t.Doctype)
 	}
+	if err := t.checkDirectory(rel); err != nil {
+		return err
+	}
 	for i, name := range t.Fields.Keys {
 		f := t.Fields.Vals[i]
 		f.Name = name
@@ -555,6 +559,30 @@ func (s *Schema) loadType(file string) error {
 		s.own(f.Name, t.Doctype)
 	}
 	s.Types[t.Doctype] = t
+	return nil
+}
+
+// Placeholder is a `{field}` in a type's `directory:`.
+var Placeholder = regexp.MustCompile(`\{(\w+)\}`)
+
+// checkDirectory rejects a `directory:` placeholder naming a field the doctype never
+// carries, which would otherwise drop out of the path and check nothing.
+func (t *Type) checkDirectory(rel string) error {
+	if t.Directory == "" {
+		return nil
+	}
+	if strings.HasPrefix(t.Directory, "/") || strings.ContainsAny(t.Directory, "*?[") {
+		return errf("%s: `directory: %s` must be a relative path with no wildcard.", rel, t.Directory)
+	}
+	declared := t.Declared()
+	for _, c := range t.RequiredWhen {
+		declared[c.Field] = true
+	}
+	for _, m := range Placeholder.FindAllStringSubmatch(t.Directory, -1) {
+		if !declared[m[1]] {
+			return errf("%s: `directory: %s` fills `{%s}` from a field the doctype does not declare.", rel, t.Directory, m[1])
+		}
+	}
 	return nil
 }
 

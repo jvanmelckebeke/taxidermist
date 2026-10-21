@@ -30,6 +30,8 @@ func TestLoadErrors(t *testing.T) {
 		{"unparseable", "traits.yaml", "traits: [\n", "traits.yaml"},
 		{"typo in a field spec", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, defintions: {a: b}}\n", "unknown key `defintions`"},
 		{"typo in a type file", "types/x.yaml", "requried: [type]\n", "unknown key `requried`"},
+		{"directory placeholder undeclared", "types/x.yaml", "required: [type]\ndirectory: x/{kind}\n", "fills `{kind}` from a field the doctype does not declare"},
+		{"directory with a wildcard", "types/x.yaml", "required: [type]\ndirectory: x/*\n", "no wildcard"},
 	}
 	for _, c := range cases {
 		err := loadWith(t, c.rel, c.body)
@@ -139,5 +141,12 @@ func TestFieldDefinitionsTakeTheSameForms(t *testing.T) {
 		if d.Key == "draft" && d.Not != "Abandoned; delete those." {
 			t.Errorf("draft = %+v", d)
 		}
+	}
+}
+
+func TestADirectoryPlaceholderMayNameARequiredWhenField(t *testing.T) {
+	body := "required: [type, course]\nrequired_when:\n  kind:\n    course: main\ndirectory: x/{kind}\n"
+	if err := loadWith(t, "types/x.yaml", body); err != nil {
+		t.Error(err)
 	}
 }

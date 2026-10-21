@@ -3,8 +3,10 @@
 // Seven kinds of fault:
 //
 //	value    a value outside the field's allowed values for that doctype, a reference
-//	         naming no page, a field on a doctype it does not apply to, or a value
-//	         that repeats the field its spec `excludes`
+//	         naming no page, a field on a doctype it does not apply to, a value
+//	         that repeats the field its spec `excludes`, a page outside the folder
+//	         its doctype's `directory:` names, or a page whose slug another page
+//	         under that folder already uses
 //	type     a value of the wrong type
 //	missing  a required field absent
 //	unknown  a key in neither the required nor the optional list: the one-off key
@@ -67,12 +69,13 @@ func (r *Result) Governed() int {
 }
 
 type Checker struct {
-	S    *schema.Schema
-	refs map[string]map[string]bool
+	S     *schema.Schema
+	refs  map[string]map[string]bool
+	stems map[string]map[string][]string // a directory -> page stem -> every page with it, recursively
 }
 
 func New(s *schema.Schema) *Checker {
-	return &Checker{S: s, refs: map[string]map[string]bool{}}
+	return &Checker{S: s, refs: map[string]map[string]bool{}, stems: map[string]map[string][]string{}}
 }
 
 // Run checks each file.
@@ -158,6 +161,9 @@ func (c *Checker) file(path string, r *Result) {
 			add("missing", f, nil, "required on `"+t.Doctype+"`")
 		}
 	}
+	if t.Directory != "" {
+		c.directory(path, fm, t.Directory, required, add)
+	}
 
 	allowed := map[string]bool{}
 	for _, f := range required {
@@ -195,6 +201,101 @@ func (c *Checker) file(path string, r *Result) {
 			}
 		}
 	}
+}
+
+// directory checks that a page sits in the folder its doctype's `directory:` names,
+// with each `{field}` filled from its frontmatter, and that no other page under the
+// pattern's fixed prefix shares its slug. A render names a page by slug alone, so an
+// ambiguous slug would resolve to whichever folder it found first.
+//
+// A placeholder whose field is optional and absent drops out of the path, so
+// `conventions/{kind}` puts a convention with no kind directly in conventions/.
+func (c *Checker) directory(path string, fm *frontmatter.Doc, pattern string, required []string, add adder) {
+	var parts, fields, prefix []string
+	fixed := true
+	for _, part := range strings.Split(pattern, "/") {
+		names := schema.Placeholder.FindAllStringSubmatch(part, -1)
+		if len(names) > 0 {
+			fixed = false
+		} else if fixed {
+			prefix = append(prefix, part)
+		}
+		if len(names) == 1 && names[0][0] == part && !present(fm, names[0][1]) && !contains(required, names[0][1]) {
+			continue
+		}
+		for _, m := range names {
+			if !present(fm, m[1]) {
+				return // the `missing` fault for that field already says so
+			}
+			fields = append(fields, m[1])
+		}
+		parts = append(parts, schema.Placeholder.ReplaceAllStringFunc(part, func(ph string) string {
+			v, _ := fm.Get(ph[1 : len(ph)-1])
+			return value.Text(v)
+		}))
+	}
+	want := filepath.Join(c.S.Base, filepath.FromSlash(strings.Join(parts, "/")))
+	if got := filepath.Dir(path); got != want {
+		label := strings.Join(fields, ", ")
+		if label == "" {
+			label = "directory"
+		}
+		add("value", label, nil, "the page is in "+schema.Display(got)+"/ but its frontmatter puts it in "+schema.Display(want)+"/")
+	}
+	stem := strings.TrimSuffix(filepath.Base(path), ".md")
+	if stem == "index" {
+		return
+	}
+	base := filepath.Join(c.S.Base, filepath.FromSlash(strings.Join(prefix, "/")))
+	var twins []string
+	for _, p := range c.pageStems(base)[stem] {
+		if p != path {
+			twins = append(twins, schema.Display(p))
+		}
+	}
+	if len(twins) > 0 {
+		add("value", "<slug>", stem, "also used by "+strings.Join(twins, ", ")+"; a slug is unique across "+schema.Display(base)+"/")
+	}
+}
+
+// present is true when the page gives the field a value that can fill a path.
+func present(fm *frontmatter.Doc, field string) bool {
+	v, ok := fm.Get(field)
+	return ok && v != nil && value.Text(v) != ""
+}
+
+// pageStems indexes every page under dir, recursively, by its stem.
+func (c *Checker) pageStems(dir string) map[string][]string {
+	if out, ok := c.stems[dir]; ok {
+		return out
+	}
+	out := map[string][]string{}
+	for _, p := range walkPages(dir) {
+		stem := strings.TrimSuffix(filepath.Base(p), ".md")
+		out[stem] = append(out[stem], p)
+	}
+	c.stems[dir] = out
+	return out
+}
+
+// walkPages returns every .md file under dir, recursively, as paths under dir even
+// when dir itself is a symlink. A missing dir has none.
+func walkPages(dir string) []string {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	filepath.WalkDir(real, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		rel, _ := filepath.Rel(real, p)
+		out = append(out, filepath.Join(dir, rel))
+		return nil
+	})
+	sortPaths(out)
+	return out
 }
 
 // placed is a file's place under one segment rule: the name it sits under.
@@ -358,38 +459,56 @@ func asMap(v any) map[string]any {
 	return m
 }
 
-// references checks that every value is the slug of a page under the base directory
-// the field names: the allowed values are whatever pages exist.
-func (c *Checker) references(label string, v any, dir string, add adder) {
-	pages := c.pages(dir)
+// references checks that every value is the slug of a page anywhere under the
+// directory the field names, so `reference: collections` reaches every kind's
+// subfolder. A `<dir>/*` reference names directories instead: the value is a folder
+// directly under <dir> that holds an index.md, and the pages inside it are not values.
+func (c *Checker) references(label string, v any, ref string, add adder) {
+	pages := c.pages(ref)
+	dir, nested := strings.CutSuffix(ref, "/*")
 	shown := schema.Display(filepath.Join(c.S.Base, dir))
+	noun := "pages"
+	if nested {
+		noun = "directories with an index.md"
+	}
 	for _, x := range each(v) {
 		if x == nil || pages[value.Text(x)] {
 			continue
 		}
 		why := "no page at " + shown + "/" + value.Text(x) + ".md"
+		if nested {
+			why = "no page at " + shown + "/" + value.Text(x) + "/index.md"
+		}
 		if len(pages) > 0 {
-			why += ". " + shown + "/ has " + strconv.Itoa(len(pages)) + " pages"
+			why += ". " + shown + "/ has " + strconv.Itoa(len(pages)) + " " + noun
 		} else {
-			why += ". " + shown + "/ holds no pages"
+			why += ". " + shown + "/ holds no " + noun
 		}
 		add("value", label, x, why)
 	}
 }
 
-func (c *Checker) pages(dir string) map[string]bool {
-	if p, ok := c.refs[dir]; ok {
+func (c *Checker) pages(ref string) map[string]bool {
+	if p, ok := c.refs[ref]; ok {
 		return p
 	}
 	out := map[string]bool{}
-	matches, _ := filepath.Glob(filepath.Join(c.S.Base, dir, "*.md"))
-	for _, m := range matches {
-		stem := strings.TrimSuffix(filepath.Base(m), ".md")
-		if stem != "index" {
-			out[stem] = true
+	if dir, nested := strings.CutSuffix(ref, "/*"); nested {
+		root := filepath.Join(c.S.Base, dir)
+		entries, _ := os.ReadDir(root)
+		for _, e := range entries {
+			if st, err := os.Stat(filepath.Join(root, e.Name(), "index.md")); err == nil && !st.IsDir() {
+				out[e.Name()] = true
+			}
+		}
+	} else {
+		for _, p := range walkPages(filepath.Join(c.S.Base, ref)) {
+			if stem := strings.TrimSuffix(filepath.Base(p), ".md"); stem != "index" {
+				out[stem] = true
+			}
 		}
 	}
-	c.refs[dir] = out
+	c.refs[ref] = out
 	return out
 }
 
