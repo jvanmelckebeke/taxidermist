@@ -216,8 +216,7 @@ func render(s *schema.Schema, t *schema.Type) string {
 		"A field's `definitions` keys **are** its allowed values, so a value cannot exist until "+
 			"someone writes down what it means. Prefer an existing one, because a near-synonym "+
 			"fragments every filter. If nothing fits, add it to the right file under "+readmeLink(s)+
-			" with its one line, in the same change that uses it. `taxidermist check` blocks the "+
-			"commit otherwise.", "")
+			" with its one line, in the same change that uses it. `"+s.Command("check")+"` fails otherwise.", "")
 	return strings.Join(L, "\n")
 }
 

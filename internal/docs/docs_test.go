@@ -177,3 +177,37 @@ func TestADirectoryRendersWhereThePageLives(t *testing.T) {
 		}
 	}
 }
+
+func TestThePagesNameTheRepoInvocation(t *testing.T) {
+	cases := []struct{ invocation, docs, check string }{
+		{"", "taxidermist docs", "taxidermist check"},
+		{"bin/kb/taxidermist", "bin/kb/taxidermist docs", "bin/kb/taxidermist check"},
+		{"tools/taxidermist {command} --taxonomy kb/taxonomy",
+			"tools/taxidermist docs --taxonomy kb/taxonomy", "tools/taxidermist check --taxonomy kb/taxonomy"},
+	}
+	for _, c := range cases {
+		dir := testutil.CopyExample(t)
+		tax := filepath.Join(dir, "taxonomy")
+		if c.invocation != "" {
+			p := filepath.Join(tax, "scope.yaml")
+			b, _ := os.ReadFile(p)
+			os.WriteFile(p, append(b, []byte("invocation: "+c.invocation+"\n")...), 0o644)
+		}
+		s, err := schema.Load(tax)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, err := Pages(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"run `" + c.docs + "`. -->", "then run `" + c.docs + "`. `" + c.check + "` fails otherwise."} {
+			if !strings.Contains(pages["README"], want) {
+				t.Errorf("%q: README.md lacks %q", c.invocation, want)
+			}
+		}
+		if want := "`" + c.check + "` fails otherwise."; !strings.Contains(pages["note"], want) {
+			t.Errorf("%q: note.md lacks %q", c.invocation, want)
+		}
+	}
+}
