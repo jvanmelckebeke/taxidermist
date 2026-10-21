@@ -24,11 +24,13 @@ func banner(s *schema.Schema) string {
 		"/. Do not hand-edit: edit the schema and run `" + s.Command("docs") + "`. -->"
 }
 
+// readmeLink links the schema directory by name, to its README when it has one.
 func readmeLink(s *schema.Schema) string {
+	name := filepath.Base(s.Dir) + "/"
 	if _, err := os.Stat(filepath.Join(s.Dir, "README.md")); err == nil {
-		return "[..](../README.md)"
+		return "[" + name + "](../README.md)"
 	}
-	return "[..](..)"
+	return "[" + name + "](..)"
 }
 
 // Pages returns page name (without .md) -> body, including the README index.

@@ -42,4 +42,4 @@ Values: `colleague` · `friend`, defined below.
 
 ## Adding a value
 
-A field's `definitions` keys **are** its allowed values, so a value cannot exist until someone writes down what it means. Prefer an existing one, because a near-synonym fragments every filter. If nothing fits, add it to the right file under [..](../README.md) with its one line, in the same change that uses it. `taxidermist check` fails otherwise.
+A field's `definitions` keys **are** its allowed values, so a value cannot exist until someone writes down what it means. Prefer an existing one, because a near-synonym fragments every filter. If nothing fits, add it to the right file under [taxonomy/](../README.md) with its one line, in the same change that uses it. `taxidermist check` fails otherwise.

@@ -211,3 +211,28 @@ func TestThePagesNameTheRepoInvocation(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSchemaLinkNamesTheDirectory(t *testing.T) {
+	for _, readme := range []bool{true, false} {
+		dir := testutil.CopyExample(t)
+		tax := filepath.Join(dir, "taxonomy")
+		want := "[taxonomy/](../README.md)"
+		if !readme {
+			os.Remove(filepath.Join(tax, "README.md"))
+			want = "[taxonomy/](..)"
+		}
+		s, err := schema.Load(tax)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, err := Pages(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, page := range []string{"README", "note"} {
+			if !strings.Contains(pages[page], "under "+want) || strings.Contains(pages[page], "[..]") {
+				t.Errorf("readme %v: %s.md lacks %q or still links [..]", readme, page, want)
+			}
+		}
+	}
+}
