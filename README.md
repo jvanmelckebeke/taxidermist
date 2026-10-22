@@ -169,7 +169,8 @@ doesn't exist, or a pattern that doesn't compile, is a schema error. It flags an
 ## JSON output
 
 `check --json` prints one object. The Python package and other callers parse it, so
-its shape is a contract and a change to it is a breaking change.
+its shape is a contract: removing or retyping a key is a breaking change, adding one
+is not. Read the keys you know and ignore the rest; the Python package does.
 
 ```json
 {

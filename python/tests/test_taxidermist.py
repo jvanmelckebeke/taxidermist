@@ -117,3 +117,18 @@ def test_not_taxidermist(monkeypatch, tmp_path):
     monkeypatch.setenv(taxidermist.ENV_VAR, fake_binary(tmp_path, "who knows"))
     with pytest.raises(TaxidermistError, match="does not look like taxidermist"):
         taxidermist.find_binary()
+
+
+def test_unknown_json_keys_are_ignored(monkeypatch, tmp_path):
+    p = tmp_path / "taxidermist"
+    p.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = version ]; then echo "taxidermist dev"; exit 0; fi\n'
+        'echo \'{"governed": 1, "new": 1, "faults": [{"file": "a.md", "kind": "missing", '
+        '"field": "topic", "value": null, "why": "w", "line": 3}], "warnings": [], "ungoverned": {}}\'\n'
+        "exit 1\n"
+    )
+    p.chmod(p.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv(taxidermist.ENV_VAR, str(p))
+    r = taxidermist.validate()
+    assert r.faults == [Finding("a.md", "missing", "topic", None, "w")]

@@ -131,7 +131,12 @@ def _run(args: list[str], taxonomy: str | os.PathLike[str], stdin: bytes | None)
     raw = json.loads(proc.stdout)
     return Result(
         governed=raw["governed"],
-        faults=[Finding(**f) for f in raw["faults"]],
-        warnings=[Finding(**f) for f in raw["warnings"]],
+        faults=[_finding(f) for f in raw["faults"]],
+        warnings=[_finding(f) for f in raw["warnings"]],
         ungoverned=raw["ungoverned"],
     )
+
+
+def _finding(raw: dict) -> Finding:
+    # Read the known keys only, so a key a newer binary adds does not break this.
+    return Finding(file=raw["file"], kind=raw["kind"], field=raw["field"], value=raw["value"], why=raw["why"])
