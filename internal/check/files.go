@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -64,18 +65,21 @@ func Files(s *schema.Schema, args []string) ([]string, error) {
 	return out, nil
 }
 
-// Governed returns the absolute path of a markdown file, which need not exist, and
-// whether a governed root holds it.
-func Governed(s *schema.Schema, path string) (string, bool, error) {
+// Governed returns the absolute path of a markdown file, which need not exist, or an
+// error when no governed root holds it.
+func Governed(s *schema.Schema, path string) (string, error) {
 	roots, err := s.GovernedRoots()
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	p, err := filepath.Abs(path)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-	return p, strings.HasSuffix(p, ".md") && under(p, roots), nil
+	if !strings.HasSuffix(p, ".md") || !under(p, roots) {
+		return "", fmt.Errorf("taxidermist: %s is not a markdown file under a root scope.yaml governs", path)
+	}
+	return p, nil
 }
 
 func under(p string, roots []string) bool {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -132,6 +133,19 @@ func TestCheckStdin(t *testing.T) {
 	}
 	if code, _, _ := runIn(t, bad, "check", "--stdin-filename", "notes/new.md", "notes/tomato-blight.md"); code != 2 {
 		t.Errorf("with FILE arguments: exit %d", code)
+	}
+}
+
+func TestDashDashEndsFlags(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	for _, n := range []string{"-a.md", "-b.md"} {
+		testutil.Write(t, dir, "notes/"+n, "---\ntype: note\ntitle: t\ntopic: nope\ndate: 2026-01-01\n---\n")
+	}
+	t.Chdir(filepath.Join(dir, "notes"))
+	code, out, errs := run(t, "check", "--taxonomy", "../taxonomy", "--json", "--", "-a.md", "-b.md")
+	if code != 1 || strings.Count(out, `"value": "nope"`) != 2 {
+		t.Errorf("exit %d\n%s%s", code, out, errs)
 	}
 }
 

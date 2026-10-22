@@ -6,8 +6,6 @@
 package taxidermist
 
 import (
-	"fmt"
-
 	"github.com/jvanmelckebeke/taxidermist/internal/check"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
@@ -15,7 +13,7 @@ import (
 
 // Kinds lists the fault kinds a Finding in Result.Faults can carry. A warning's kind
 // is always "mismatch".
-var Kinds = check.Kinds
+var Kinds = append([]string(nil), check.Kinds...)
 
 // Taxonomy is a loaded taxonomy directory. Load it once and validate any number of
 // files against it.
@@ -50,12 +48,9 @@ func (t *Taxonomy) Validate(paths ...string) (*Result, error) {
 // exemptions and the slug a page must not share. A path outside the governed roots
 // is an error rather than a skip, since the caller named it on purpose.
 func (t *Taxonomy) ValidateContent(path string, content []byte) (*Result, error) {
-	abs, ok, err := check.Governed(t.s, path)
+	abs, err := check.Governed(t.s, path)
 	if err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf("taxidermist: %s is not a markdown file under a root scope.yaml governs", path)
 	}
 	return newResult(check.New(t.s).Content(abs, content)), nil
 }

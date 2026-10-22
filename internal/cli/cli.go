@@ -71,22 +71,23 @@ func newFlags(name, summary string, stderr io.Writer) (*flag.FlagSet, *string) {
 	return fs, tax
 }
 
-// parse accepts flags before, between and after positional arguments.
+// parse accepts flags before, between and after positional arguments. Everything
+// after a `--` is positional.
 func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
 			return nil, err
 		}
-		args = fs.Args()
-		if len(args) == 0 {
+		rest := fs.Args()
+		if n := len(args) - len(rest); n > 0 && args[n-1] == "--" {
+			return append(pos, rest...), nil
+		}
+		if len(rest) == 0 {
 			return pos, nil
 		}
-		if args[0] == "--" {
-			return append(pos, args[1:]...), nil
-		}
-		pos = append(pos, args[0])
-		args = args[1:]
+		pos = append(pos, rest[0])
+		args = rest[1:]
 	}
 }
 

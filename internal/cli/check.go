@@ -61,10 +61,7 @@ exist. PATH must sit under a governed root.`, stderr)
 	}
 	var r *check.Result
 	if *stdinName != "" {
-		abs, governed, err := check.Governed(s, *stdinName)
-		if err == nil && !governed {
-			err = fmt.Errorf("taxidermist: %s is not a markdown file under a root scope.yaml governs", *stdinName)
-		}
+		abs, err := check.Governed(s, *stdinName)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
