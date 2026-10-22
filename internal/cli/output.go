@@ -168,46 +168,6 @@ func writeWarnings(w io.Writer, s *schema.Schema, r *check.Result, verbose bool)
 	fmt.Fprintln(w, "  -> taxidermist check --verbose lists each file")
 }
 
-type jsonFault struct {
-	File  string  `json:"file"`
-	Kind  string  `json:"kind"`
-	Field string  `json:"field"`
-	Value *string `json:"value"`
-	Why   string  `json:"why"`
-}
-
-func writeJSON(w io.Writer, r *check.Result) {
-	out := struct {
-		Governed   int                 `json:"governed"`
-		Faults     []jsonFault         `json:"faults"`
-		Warnings   []jsonFault         `json:"warnings"`
-		Ungoverned map[string][]string `json:"ungoverned"`
-	}{Governed: r.Governed(), Faults: []jsonFault{}, Warnings: []jsonFault{}, Ungoverned: map[string][]string{}}
-	conv := func(f check.Fault) jsonFault {
-		jf := jsonFault{File: schema.Display(f.Path), Kind: f.Kind, Field: f.Field, Why: f.Why}
-		if f.Value != nil {
-			v := value.Text(f.Value)
-			jf.Value = &v
-		}
-		return jf
-	}
-	for _, f := range r.Faults {
-		out.Faults = append(out.Faults, conv(f))
-	}
-	for _, f := range r.Warnings {
-		out.Warnings = append(out.Warnings, conv(f))
-	}
-	for dt, ps := range r.Ungoverned {
-		for _, p := range ps {
-			out.Ungoverned[dt] = append(out.Ungoverned[dt], schema.Display(p))
-		}
-	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(out)
-}
-
 func writeTOON(w io.Writer, r *check.Result) {
 	table := func(name string, fs []check.Fault) {
 		fmt.Fprintf(w, "%s[%d]{file,kind,field,value,why}:\n", name, len(fs))

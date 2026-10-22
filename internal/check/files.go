@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,11 +32,8 @@ func Files(s *schema.Schema, args []string) ([]string, error) {
 			if st, err := os.Stat(p); err != nil || st.IsDir() {
 				continue
 			}
-			for _, r := range roots {
-				if p == r || strings.HasPrefix(p, r+string(filepath.Separator)) {
-					out = append(out, p)
-					break
-				}
+			if under(p, roots) {
+				out = append(out, p)
 			}
 		}
 		return out, nil
@@ -65,6 +63,32 @@ func Files(s *schema.Schema, args []string) ([]string, error) {
 	}
 	sortPaths(out)
 	return out, nil
+}
+
+// Governed returns the absolute path of a markdown file, which need not exist, or an
+// error when no governed root holds it.
+func Governed(s *schema.Schema, path string) (string, error) {
+	roots, err := s.GovernedRoots()
+	if err != nil {
+		return "", err
+	}
+	p, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasSuffix(p, ".md") || !under(p, roots) {
+		return "", fmt.Errorf("taxidermist: %s is not a markdown file under a root scope.yaml governs", path)
+	}
+	return p, nil
+}
+
+func under(p string, roots []string) bool {
+	for _, r := range roots {
+		if p == r || strings.HasPrefix(p, r+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // sortPaths orders paths component by component, as Python sorts Path objects.

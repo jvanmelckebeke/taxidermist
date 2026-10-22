@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,8 +14,13 @@ import (
 
 func run(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
+	return runIn(t, "", args...)
+}
+
+func runIn(t *testing.T, stdin string, args ...string) (int, string, string) {
+	t.Helper()
 	var out, errb bytes.Buffer
-	code := Run(args, &out, &errb)
+	code := Run(args, strings.NewReader(stdin), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -105,6 +111,41 @@ func TestCheckOutputs(t *testing.T) {
 	}
 	if code, _, errs := run(t, "check", "--json", "--toon"); code != 2 {
 		t.Errorf("exclusive flags: exit %d %s", code, errs)
+	}
+}
+
+func TestCheckStdin(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	bad := "---\ntype: note\ntitle: t\ntopic: nope\ndate: 2026-01-01\n---\n"
+	code, out, _ := runIn(t, bad, "check", "--stdin-filename", "notes/new.md", "--json")
+	if code != 1 || !strings.Contains(out, `"file": "notes/new.md"`) || !strings.Contains(out, `"value": "nope"`) {
+		t.Errorf("json: exit %d\n%s", code, out)
+	}
+	if code, _, errs := runIn(t, bad, "check", "--stdin-filename", "notes/new.md"); code != 1 || !strings.Contains(errs, `[value] topic: "nope"`) {
+		t.Errorf("text: exit %d\n%s", code, errs)
+	}
+	if code, out, _ := runIn(t, bad, "check", "--stdin-filename", "notes/new.md", "--json", "--kind", "missing"); code != 0 || !strings.Contains(out, `"faults": []`) {
+		t.Errorf("--kind: exit %d\n%s", code, out)
+	}
+	if code, _, errs := runIn(t, bad, "check", "--stdin-filename", "elsewhere/x.md", "--json"); code != 2 || !strings.Contains(errs, "elsewhere/x.md") {
+		t.Errorf("outside the roots: exit %d\n%s", code, errs)
+	}
+	if code, _, _ := runIn(t, bad, "check", "--stdin-filename", "notes/new.md", "notes/tomato-blight.md"); code != 2 {
+		t.Errorf("with FILE arguments: exit %d", code)
+	}
+}
+
+func TestDashDashEndsFlags(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	for _, n := range []string{"-a.md", "-b.md"} {
+		testutil.Write(t, dir, "notes/"+n, "---\ntype: note\ntitle: t\ntopic: nope\ndate: 2026-01-01\n---\n")
+	}
+	t.Chdir(filepath.Join(dir, "notes"))
+	code, out, errs := run(t, "check", "--taxonomy", "../taxonomy", "--json", "--", "-a.md", "-b.md")
+	if code != 1 || strings.Count(out, `"value": "nope"`) != 2 {
+		t.Errorf("exit %d\n%s%s", code, out, errs)
 	}
 }
 

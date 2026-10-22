@@ -1,3 +1,5 @@
 /taxidermist
 /dist/
 /claudedocs/
+__pycache__/
+.pytest_cache/

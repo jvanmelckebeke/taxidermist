@@ -90,7 +90,15 @@ func Parse(block string) (*Doc, error) {
 // file looks fine on disk and is invisible to every tool that reads it.
 func Read(path string) (*Doc, error) {
 	raw, err := os.ReadFile(path)
-	if err != nil || !utf8.Valid(raw) {
+	if err != nil {
+		return nil, nil
+	}
+	return Bytes(raw)
+}
+
+// Bytes parses the frontmatter of a file's content, as Read does.
+func Bytes(raw []byte) (*Doc, error) {
+	if !utf8.Valid(raw) {
 		return nil, nil
 	}
 	block, opened, err := Block(string(raw))

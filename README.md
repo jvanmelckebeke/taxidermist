@@ -139,6 +139,7 @@ taxidermist check [FILE ...]   check frontmatter (default: every governed root)
     --ungoverned               list the files whose doctype has no schema
     --kind value,missing       only these fault (or warning) kinds
     --verbose                  list every warning and segment fault per file
+    --stdin-filename PATH      check stdin as the file at PATH, which need not exist
     --json | --toon            machine-readable output
 taxidermist docs [--check]     generate taxonomy/format/, or fail if it is stale
 taxidermist lint               check the schema against its own invariants
@@ -155,11 +156,96 @@ item), `parse` (a block that opens and doesn't parse, which leaves the file invi
 to every reader) and `segment` (a folder name off its vocabulary). It also reports one kind of warning, `mismatch`, which doesn't change
 the exit code.
 
+`--stdin-filename` checks content before it is written anywhere. PATH still decides
+the folder rules, the exemptions and the slug, so it must sit under a governed root;
+one that does not is a usage error (exit 2), not a silent skip.
+
 `lint` also checks that each segment rule's directory exists under a governed root
 and that its `field` is one some doctype declares. A rule naming a vocabulary that
 doesn't exist, or a pattern that doesn't compile, is a schema error. It flags an
 `excludes` naming a field that some doctype carrying the field doesn't declare, and an
 `excludes` on a nested key, which nothing checks.
+
+## JSON output
+
+`check --json` prints one object. The Python package and other callers parse it, so
+its shape is a contract: removing or retyping a key is a breaking change, adding one
+is not. Read the keys you know and ignore the rest; the Python package does.
+
+```json
+{
+  "governed": 1,
+  "faults": [
+    {
+      "file": "notes/x.md",
+      "kind": "missing",
+      "field": "topic",
+      "value": null,
+      "why": "required on `note`"
+    }
+  ],
+  "warnings": [],
+  "ungoverned": {}
+}
+```
+
+- `governed` counts the checked files whose doctype has a schema.
+- `faults` fail the check (exit 1). `warnings` never do, and their `kind` is always
+  `mismatch`. Both are arrays, empty rather than null, in file order.
+- `file` is relative to the working directory when the file sits under it, absolute
+  otherwise.
+- `kind` is the rule that fired: `value`, `type`, `missing`, `unknown`, `shape`,
+  `parse`, `segment` or `mismatch`.
+- `field` is the frontmatter key, or `<frontmatter>`, `<slug>` or a folder rule's path
+  when the finding is about no single key.
+- `value` is the offending value as YAML text, or null when there is none, as for a
+  missing field.
+- `why` says what is wrong and what the schema allows.
+- `ungoverned` maps a doctype with no `types/` file to its files, when scope.yaml
+  says `ungoverned: report`.
+
+`--kind` filters `faults` and `warnings` before printing. Exit 2 prints nothing on
+stdout and the reason on stderr.
+
+## From Go and Python
+
+The root package is the library behind `check --json`:
+
+```go
+import "github.com/jvanmelckebeke/taxidermist"
+
+tax, err := taxidermist.Load("taxonomy")
+r, err := tax.Validate("notes/a.md", "notes/b.md") // no paths: every governed root
+r, err = tax.ValidateContent("notes/new.md", content) // content as that file
+for _, f := range r.Faults {
+	fmt.Println(f.File, f.Kind, f.Field, f.Why)
+}
+```
+
+The Python package in [`python/`](python/) runs the binary with `--json` and returns
+the same result as dataclasses:
+
+```sh
+pip install "git+https://github.com/jvanmelckebeke/taxidermist#subdirectory=python"
+```
+
+```python
+import taxidermist
+
+r = taxidermist.validate("notes/a.md", taxonomy="taxonomy")
+r = taxidermist.validate_content(card_text, "backlog/new.md", taxonomy="taxonomy")
+if not r.ok:
+    for f in r.faults:
+        print(f.file, f.kind, f.field, f.value, f.why)
+```
+
+It runs `$TAXIDERMIST_BIN` when set, otherwise `taxidermist` on PATH. It raises
+`BinaryNotFound` when there is neither, `BinaryTooOld` for a release before 0.6.0,
+and `TaxidermistError` for a broken taxonomy or a bad path. A build that reports
+version `dev`, such as one from `go install`, is accepted.
+
+The package does not ship the binary yet. Wheels that bundle it per platform, the
+way ruff and uv do, are a later option.
 
 ## Pre-commit
 

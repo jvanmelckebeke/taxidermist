@@ -34,7 +34,7 @@ Every command takes --taxonomy DIR. Run "taxidermist <command> -h" for its flags
 
 // Run executes one command and returns the exit code: 0 clean, 1 faults, 2 a usage
 // or schema error.
-func Run(args []string, stdout, stderr io.Writer) int {
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -42,7 +42,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "check":
-		return runCheck(rest, stdout, stderr)
+		return runCheck(rest, stdin, stdout, stderr)
 	case "docs":
 		return runDocs(rest, stdout, stderr)
 	case "lint":
@@ -71,22 +71,23 @@ func newFlags(name, summary string, stderr io.Writer) (*flag.FlagSet, *string) {
 	return fs, tax
 }
 
-// parse accepts flags before, between and after positional arguments.
+// parse accepts flags before, between and after positional arguments. Everything
+// after a `--` is positional.
 func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
 			return nil, err
 		}
-		args = fs.Args()
-		if len(args) == 0 {
+		rest := fs.Args()
+		if n := len(args) - len(rest); n > 0 && args[n-1] == "--" {
+			return append(pos, rest...), nil
+		}
+		if len(rest) == 0 {
 			return pos, nil
 		}
-		if args[0] == "--" {
-			return append(pos, args[1:]...), nil
-		}
-		pos = append(pos, args[0])
-		args = args[1:]
+		pos = append(pos, rest[0])
+		args = rest[1:]
 	}
 }
 
