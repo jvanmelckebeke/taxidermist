@@ -28,6 +28,7 @@
 package check
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -79,14 +80,22 @@ func New(s *schema.Schema) *Checker {
 func (c *Checker) Run(files []string) *Result {
 	r := &Result{Files: files, Ungoverned: map[string][]string{}}
 	for _, p := range files {
-		c.file(p, r)
+		raw, _ := os.ReadFile(p)
+		c.file(p, raw, r)
 	}
+	return r
+}
+
+// Content checks raw as the file at path, which is absolute and need not exist.
+func (c *Checker) Content(path string, raw []byte) *Result {
+	r := &Result{Files: []string{path}, Ungoverned: map[string][]string{}}
+	c.file(path, raw, r)
 	return r
 }
 
 type adder func(kind, field string, v any, why string)
 
-func (c *Checker) file(path string, r *Result) {
+func (c *Checker) file(path string, raw []byte, r *Result) {
 	add := func(kind, field string, v any, why string) {
 		r.Faults = append(r.Faults, Fault{Path: path, Kind: kind, Field: field, Value: v, Why: why})
 	}
@@ -96,7 +105,7 @@ func (c *Checker) file(path string, r *Result) {
 			r.Faults = append(r.Faults, Fault{Path: path, Kind: "segment", Field: sg.rule.Path, Value: sg.name, Why: why, Dir: sg.dir(c.S)})
 		}
 	}
-	fm, err := frontmatter.Read(path)
+	fm, err := frontmatter.Bytes(raw)
 	if err == nil && fm != nil {
 		for _, sg := range segs {
 			if sg.rule.Field == "" {

@@ -34,7 +34,7 @@ Every command takes --taxonomy DIR. Run "taxidermist <command> -h" for its flags
 
 // Run executes one command and returns the exit code: 0 clean, 1 faults, 2 a usage
 // or schema error.
-func Run(args []string, stdout, stderr io.Writer) int {
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -42,7 +42,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "check":
-		return runCheck(rest, stdout, stderr)
+		return runCheck(rest, stdin, stdout, stderr)
 	case "docs":
 		return runDocs(rest, stdout, stderr)
 	case "lint":
