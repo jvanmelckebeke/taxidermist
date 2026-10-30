@@ -240,3 +240,19 @@ func (c *Checker) pages(ref string) map[string]bool {
 	c.refs[ref] = out
 	return out
 }
+func (c *Checker) exemptions(path string) map[string]bool {
+	out := map[string]bool{}
+	rel, err := filepath.Rel(c.S.Base, path)
+	if err != nil {
+		return out
+	}
+	rel = filepath.ToSlash(rel)
+	for _, e := range c.S.Exempt {
+		if schema.Fnmatch(rel, e.Paths) {
+			for _, f := range e.Omit {
+				out[f] = true
+			}
+		}
+	}
+	return out
+}

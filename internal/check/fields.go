@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jvanmelckebeke/taxidermist/internal/frontmatter"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
@@ -178,4 +179,73 @@ func TypeOK(v any, spec string) bool {
 		}
 	}
 	return false
+}
+
+// fieldSet checks one mapping against a doctype's field set: a frontmatter block,
+// a whole YAML file, or one entry or item of one. prefix leads every fault's field,
+// so a fault inside an entry names the path down to its key. It returns the fields
+// required here, `required_when` included.
+func (c *Checker) fieldSet(prefix string, fm *frontmatter.Doc, t *schema.Type, skip map[string]bool, add adder) []string {
+	required := append([]string(nil), t.Required...)
+	optional := append([]string(nil), t.Optional...)
+	for _, cond := range t.RequiredWhen {
+		all := true
+		for i, k := range cond.When.Keys {
+			got, _ := fm.Get(k)
+			if value.Text(got) != value.Text(cond.When.Vals[i]) {
+				all = false
+				break
+			}
+		}
+		if all {
+			required = append(required, cond.Field)
+		} else if !contains(optional, cond.Field) {
+			optional = append(optional, cond.Field)
+		}
+	}
+
+	for _, f := range required {
+		if _, ok := fm.Get(f); !ok && !skip[f] {
+			add("missing", prefix+f, nil, "required on `"+t.Doctype+"`")
+		}
+	}
+
+	allowed := map[string]bool{}
+	for _, f := range required {
+		allowed[f] = true
+	}
+	for _, f := range optional {
+		allowed[f] = true
+	}
+	for _, name := range fm.Keys {
+		v := fm.Fields[name]
+		label := prefix + name
+		if !allowed[name] {
+			add("unknown", label, v, "not declared for `"+t.Doctype+"` in types/"+t.Slug+".yaml")
+			continue
+		}
+		spec := t.Resolved[name]
+		if spec == nil {
+			if len(c.S.Owners[name]) > 0 {
+				add("value", label, v, "`"+name+"` does not apply to `"+t.Doctype+"`")
+			}
+			continue
+		}
+		c.field(label, v, spec, add)
+		if spec.Excludes == "" {
+			continue
+		}
+		other, ok := fm.Get(spec.Excludes)
+		if !ok {
+			continue
+		}
+		for _, x := range each(v) {
+			for _, y := range each(other) {
+				if x != nil && value.Text(x) == value.Text(y) {
+					add("value", label, x, "repeats the file's own `"+spec.Excludes+"`")
+				}
+			}
+		}
+	}
+	return required
 }

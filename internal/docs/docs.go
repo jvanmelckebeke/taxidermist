@@ -107,41 +107,6 @@ func Pages(s *schema.Schema) (map[string]string, error) {
 	return out, nil
 }
 
-// VocabularyDir is the folder under format/ that holds one page per vocabulary.
-const VocabularyDir = "vocabularies"
-
-// vocabularyPage is one vocabulary's values and what each means, with the file that
-// declares them.
-func vocabularyPage(s *schema.Schema, name string) string {
-	L := []string{"# Vocabulary `" + name + "`", "", banner(s), ""}
-	if src, ok := s.Sources[name]; ok {
-		line := "Read from [`" + src.From + "`](../../../" + src.From + "): "
-		if src.At != "" {
-			line += "the keys of `" + src.At + "`"
-		} else {
-			line += "its top-level keys"
-		}
-		if src.Means != "" {
-			line += ", each meaning its entry's `" + src.Means + ":`"
-		}
-		L = append(L, line+". A value is added there, not here.", "")
-	} else {
-		L = append(L, "Defined in [../../vocabularies/"+name+".yaml](../../vocabularies/"+name+".yaml).", "")
-	}
-	enum := s.Vocabularies[name]
-	if hasMeanings(enum) {
-		L = append(L, valuesTable(enum, true)...)
-	} else {
-		var keys []string
-		for _, d := range enum {
-			keys = append(keys, "`"+d.Key+"`")
-		}
-		sort.Strings(keys)
-		L = append(L, "Values: "+strings.Join(keys, " · ")+".")
-	}
-	return strings.Join(L, "\n")
-}
-
 // Sync writes the pages, or with check set reports the stale ones and writes nothing.
 // A page on disk that no doctype generates is stale too, and is deleted on a write.
 func Sync(s *schema.Schema, check bool) (stale []string, written, total int, err error) {

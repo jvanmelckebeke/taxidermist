@@ -2,24 +2,11 @@ package docs
 
 import (
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
-
-func valueType(f *schema.Field) string {
-	if f == nil || f.Value == "" {
-		return "str"
-	}
-	return f.Value
-}
-
-// nested is the key block of an object field or of a list's items, whichever it has.
-func nested(f *schema.Field) []*schema.Field {
-	return f.Nested()
-}
 
 func render(s *schema.Schema, t *schema.Type) string {
 	names := append(append([]string(nil), t.Required...), t.Optional...)
@@ -192,89 +179,6 @@ func render(s *schema.Schema, t *schema.Type) string {
 	return strings.Join(L, "\n")
 }
 
-// template is a field's lines in the "Copy this" block, at the given indent, with
-// every nested key, map value and list item below it.
-func template(name string, f *schema.Field, tail, in string) []string {
-	sub := nested(f)
-	switch {
-	case f.Value == "map":
-		out := []string{in + name + ":" + tail}
-		if f.Values != nil {
-			return append(out, template("<name>", f.Values, "", in+"  ")...)
-		}
-		out = append(out, in+"  <name>:")
-		for _, k := range sub {
-			out = append(out, template(k.Name, k, optMark(k), in+"    ")...)
-		}
-		return out
-	case len(sub) > 0 && f.Value == "object":
-		out := []string{in + name + ":" + tail}
-		for _, k := range sub {
-			out = append(out, template(k.Name, k, optMark(k), in+"  ")...)
-		}
-		return out
-	case len(sub) > 0:
-		out := []string{in + name + ":" + tail}
-		for i, k := range sub {
-			lines := template(k.Name, k, optMark(k), in+"    ")
-			if i == 0 {
-				lines[0] = in + "  - " + strings.TrimPrefix(lines[0], in+"    ")
-			}
-			out = append(out, lines...)
-		}
-		return out
-	}
-	v := enumKeys(f)
-	switch {
-	case len(v) > 0 && f.Value == "list":
-		return []string{in + name + ": [<" + strings.Join(v, " | ") + ">]" + tail}
-	case len(v) > 0:
-		return []string{in + name + ": <" + strings.Join(v, " | ") + ">" + tail}
-	case f.Value == "list":
-		return []string{in + name + ": []" + tail}
-	}
-	return []string{in + name + ": <" + valueType(f) + ">" + tail}
-}
-
-// subKey describes a nested key, or a map's values, as a list item with its allowed
-// values below it.
-func subKey(name string, k *schema.Field, req string) []string {
-	line := "- " + name
-	if req != "" {
-		line += " · " + req
-	}
-	line += " · `" + valueType(k) + "`" + matches(k)
-	if k.Guidance != "" {
-		line += ": " + k.Guidance
-	}
-	if k.Reference != "" {
-		line += " Any " + refTarget(k.Reference) + ", checked."
-	}
-	out := []string{line}
-	for _, d := range k.Enum() {
-		line := "  - `" + d.Key + "`: " + d.Means
-		if d.Not != "" {
-			line += " Not for: " + d.Not
-		}
-		out = append(out, line)
-	}
-	return out
-}
-
-// enumKeys is a field's allowed values, sorted, once each.
-func enumKeys(f *schema.Field) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, d := range f.Enum() {
-		if !seen[d.Key] {
-			seen[d.Key] = true
-			out = append(out, d.Key)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func matches(f *schema.Field) string {
 	if f.Pattern == "" {
 		return ""
@@ -297,81 +201,6 @@ func keyRule(k *schema.Field) string {
 		parts = append(parts, "is a "+refTarget(k.Reference))
 	}
 	return joinAnd(parts)
-}
-
-// vocabLink links a vocabulary's own page from a page in format/.
-func vocabLink(name string) string {
-	return "[`" + name + "`](vocabularies/" + name + ".md)"
-}
-
-// valuesTable is the table of a field's or a vocabulary's values and what each means.
-func valuesTable(enum []schema.Def, groups bool) []string {
-	grouped, nots := false, false
-	for _, d := range enum {
-		grouped = grouped || (groups && d.Group != "")
-		nots = nots || d.Not != ""
-	}
-	head, rule := "| value |", "|---|"
-	if grouped {
-		head, rule = head+" group |", rule+"---|"
-	}
-	head, rule = head+" means |", rule+"---|"
-	if nots {
-		head, rule = head+" not for |", rule+"---|"
-	}
-	L := []string{head, rule}
-	seen := map[string]bool{}
-	var keys []string
-	for _, d := range enum {
-		if !seen[d.Key] {
-			seen[d.Key] = true
-			keys = append(keys, d.Key)
-		}
-	}
-	sort.Strings(keys)
-	for _, x := range keys {
-		d := lookup(enum, x)
-		row := "| `" + x + "` |"
-		if grouped {
-			row += " " + d.Group + " |"
-		}
-		row += " " + cell(d.Means) + " |"
-		if nots {
-			row += " " + cell(d.Not) + " |"
-		}
-		L = append(L, row)
-	}
-	return L
-}
-
-func optMark(f *schema.Field) string {
-	if f.Required {
-		return ""
-	}
-	return "   # optional"
-}
-
-func hasMeanings(enum []schema.Def) bool {
-	for _, d := range enum {
-		if d.Means != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func lookup(enum []schema.Def, key string) schema.Def {
-	for _, d := range enum {
-		if d.Key == key {
-			return d
-		}
-	}
-	return schema.Def{}
-}
-
-// cell keeps a definition inside its table cell.
-func cell(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, "|", `\|`), "\n", " ")
 }
 
 func joinAnd(xs []string) string {
