@@ -94,9 +94,14 @@ func pagesGate(s *schema.Schema, tax string, stderr io.Writer) int {
 	if docsSync(s, true, io.Discard, stderr) == 0 {
 		return 0
 	}
+	// The hint repeats the hook's own --taxonomy unless the invocation already names one.
+	docs := s.Command("docs")
+	if !strings.Contains(docs, "--taxonomy") {
+		docs += " --taxonomy " + tax
+	}
 	fmt.Fprintf(stderr, "\ncommit blocked: %s/format/ is stale vs the schema.\n"+
-		"  -> taxidermist docs --taxonomy %s   then re-stage, or   git commit --no-verify\n\n",
-		schema.Display(s.Dir), tax)
+		"  -> %s   then re-stage, or   git commit --no-verify\n\n",
+		schema.Display(s.Dir), docs)
 	return 1
 }
 

@@ -130,3 +130,12 @@ func TestExcludesOnANestedKeyIsFlagged(t *testing.T) {
 		t.Errorf("rules fired %v", got)
 	}
 }
+
+func TestARootOfDotHoldsEverything(t *testing.T) {
+	got := rules(t, func(tax string) {
+		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- notes\n- people\n- meetings\n- projects\n- config\n", "- .\n")
+	})
+	if len(got) > 0 {
+		t.Errorf("rules fired %v", got)
+	}
+}

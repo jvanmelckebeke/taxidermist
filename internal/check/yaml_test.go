@@ -139,3 +139,34 @@ func TestAPageCannotTakeAYAMLDoctype(t *testing.T) {
 		t.Errorf("faults = %+v", got)
 	}
 }
+
+func TestFacetsCountYAMLEntries(t *testing.T) {
+	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _ := Files(s, nil)
+	var b strings.Builder
+	Facets(&b, s, files)
+	for _, want := range []string{"\nsite  (1 files)\n", "\nteam  (2 entries)\n", "    lead: 2/2  alice(1), bob(1)\n",
+		"\nrota-week  (2 entries)\n", "    week: 2/2  2026-W27(1), 2026-W28(1)\n"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("facets lacks %q:\n%s", want, b.String())
+		}
+	}
+}
+
+func TestFacetsKeepABlockScalarOnOneLine(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	testutil.Write(t, dir, "config/site.yaml", "name: |\n  two\n  lines\ntimezone: Europe/Brussels\n")
+	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _ := Files(s, nil)
+	var b strings.Builder
+	Facets(&b, s, files)
+	if want := "    name: 1/1  two\\nlines\\n(1)\n"; !strings.Contains(b.String(), want) {
+		t.Errorf("facets lacks %q:\n%s", want, b.String())
+	}
+}

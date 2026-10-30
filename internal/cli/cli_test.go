@@ -211,3 +211,29 @@ func TestSegmentFaultsPrintOncePerFolder(t *testing.T) {
 		t.Errorf("verbose:\n%s", errs)
 	}
 }
+
+func TestHintsNameTheRepoInvocation(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := testutil.CopyExample(t)
+	t.Chdir(dir)
+	scope := "taxonomy/scope.yaml"
+	b, _ := os.ReadFile(scope)
+	os.WriteFile(scope, []byte(string(b)+"invocation: bin/tax {command}\n"), 0o644)
+	run(t, "docs")
+	testutil.Write(t, dir, "projects/infra/w.md", "---\ntype: Project Plan\ntitle: w\ntopic: hiring\n---\n")
+	if _, _, errs := run(t, "check"); !strings.Contains(errs, "  -> bin/tax check --verbose lists each file") {
+		t.Errorf("warnings hint:\n%s", errs)
+	}
+	gitIn(t, dir, "init", "-q")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "init")
+	p := "taxonomy/types/person.yaml"
+	b, _ = os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "How you know them.", "How you met.", 1)), 0o644)
+	gitIn(t, dir, "add", p)
+	if _, _, errs := run(t, "hook"); !strings.Contains(errs, "  -> bin/tax docs --taxonomy taxonomy   then re-stage") {
+		t.Errorf("hook hint:\n%s", errs)
+	}
+}

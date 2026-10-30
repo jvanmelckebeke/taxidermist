@@ -28,7 +28,7 @@ Every shared value list, on a page of its own.
 
 A folder name directly under these directories, or the filename of a page sitting directly there, must be an allowed value. `index.md` and `README.md` there describe the directory itself.
 
-- `projects/<name>`: `<name>` is a value of [`topic`](../vocabularies/topic.yaml). A file whose `topic:` names a different value gets a warning.
+- `projects/<name>`: `<name>` is a value of [`topic`](vocabularies/topic.md). A file whose `topic:` names a different value gets a warning.
 - `people/<name>`: `<name>` matches `^[a-z][a-z-]*$`.
 
 ## What holds on every page

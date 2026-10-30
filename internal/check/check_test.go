@@ -299,3 +299,23 @@ func TestFnmatch(t *testing.T) {
 		}
 	}
 }
+
+func TestTheTaxonomyDirectoryIsNeverWalked(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+	b, _ := os.ReadFile(scope)
+	os.WriteFile(scope, []byte(strings.Replace(string(b), "- config\n", "- config\n- taxonomy\n", 1)), 0o644)
+	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _ := Files(s, nil)
+	for _, p := range files {
+		if strings.Contains(p, string(filepath.Separator)+"taxonomy"+string(filepath.Separator)) {
+			t.Errorf("walked %s", p)
+		}
+	}
+	if r := New(s).Run(files); r.Governed() != 10 {
+		t.Errorf("governed = %d, want the 10 content files", r.Governed())
+	}
+}
