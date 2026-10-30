@@ -31,23 +31,33 @@ func (c *Checker) field(name string, v any, spec *schema.Field, add adder) {
 		}
 		return
 	}
-	if spec.Reference != "" {
-		c.references(name, v, spec.Reference, add)
-		return
-	}
-	enum := spec.Enum()
-	if len(enum) == 0 {
-		return
-	}
-	for _, x := range each(v) {
-		if x != nil && !member(x, enum) {
-			add("value", name, x, "allowed: "+strings.Join(sortedKeys(enum), " · "))
+	_, isList := v.([]any)
+	for i, x := range each(v) {
+		label := name
+		if isList {
+			label = name + "[" + strconv.Itoa(i) + "]"
 		}
+		c.element(label, x, spec, add)
 	}
 }
 
-// keys checks one mapping against a `schema:` or `items:` block: declared keys typed,
-// nothing else.
+// element checks one value, or one element of a list, against the field's reference
+// or its allowed values.
+func (c *Checker) element(label string, x any, spec *schema.Field, add adder) {
+	if x == nil {
+		return
+	}
+	if spec.Reference != "" {
+		c.references(label, x, spec.Reference, add)
+		return
+	}
+	if enum := spec.Enum(); len(enum) > 0 && !member(x, enum) {
+		add("value", label, x, "allowed: "+strings.Join(sortedKeys(enum), " · "))
+	}
+}
+
+// keys checks one mapping against a `schema:` or `items:` block: each declared key
+// gets the same checks as a top-level field, and nothing else is allowed.
 func (c *Checker) keys(label string, m map[string]any, sub []*schema.Field, add adder) {
 	known := map[string]bool{}
 	for _, rule := range sub {
@@ -60,21 +70,7 @@ func (c *Checker) keys(label string, m map[string]any, sub []*schema.Field, add 
 			}
 			continue
 		}
-		if !TypeOK(got, rule.Value) {
-			add("type", key, got, "expected "+rule.Value+", got "+value.TypeName(got))
-			continue
-		}
-		if enum := rule.Enum(); len(enum) > 0 && !member(got, enum) {
-			var keys []string
-			for _, d := range enum {
-				keys = append(keys, d.Key)
-			}
-			add("value", key, got, "not a defined value. Allowed: "+strings.Join(keys, " · "))
-			continue
-		}
-		if rule.Reference != "" {
-			c.references(key, got, rule.Reference, add)
-		}
+		c.field(key, got, rule, add)
 	}
 	extra := make([]string, 0)
 	for k := range m {
