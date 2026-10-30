@@ -1,9 +1,11 @@
-// Package check validates frontmatter against a schema.
+// Package check validates frontmatter, and YAML files a doctype's `files:` names,
+// against a schema.
 //
 // Seven kinds of fault:
 //
-//	value    a value outside the field's allowed values for that doctype, a reference
-//	         naming no page, a field on a doctype it does not apply to, a value
+//	value    a value outside the field's allowed values for that doctype, one that
+//	         misses its pattern, a reference naming no page or key, a YAML file no
+//	         doctype's `files:` matches, or two do, a field on a doctype it does not apply to, a value
 //	         that repeats the field its spec `excludes`, a page outside the folder
 //	         its doctype's `directory:` names, or a page whose slug another page
 //	         under that folder already uses
@@ -13,7 +15,8 @@
 //	         nobody else uses, which is how a vocabulary forks
 //	shape    an object field, or an item of a list of objects, whose keys are wrong
 //	parse    a block that opens and does not parse, so the file is invisible to
-//	         every reader while looking correct on disk
+//	         every reader while looking correct on disk, or a YAML file that does
+//	         not parse
 //	segment  a folder name, or the stem of a page directly under a segment rule's
 //	         directory, that is not one of the rule's values
 //
@@ -99,6 +102,10 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 	add := func(kind, field string, v any, why string) {
 		r.Faults = append(r.Faults, Fault{Path: path, Kind: kind, Field: field, Value: v, Why: why})
 	}
+	if schema.IsYAMLPath(path) {
+		c.yamlFile(path, raw, r, add)
+		return
+	}
 	segs := c.segments(path)
 	for _, sg := range segs {
 		if why := c.segmentFault(sg.rule, sg.name); why != "" {
@@ -139,10 +146,25 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 			r.Ungoverned[key] = append(r.Ungoverned[key], path)
 			return
 		}
-		add("value", "type", dt, "no types/ file declares this doctype. Known: "+strings.Join(c.S.Doctypes(), " · "))
+		add("value", "type", dt, "no types/ file declares this doctype. Known: "+strings.Join(c.markdownDoctypes(), " · "))
 		return
 	}
+	if t.IsYAML() {
+		add("value", "type", dt, "`"+t.Doctype+"` is the doctype of "+t.Files+", not of a markdown page. Known: "+
+			strings.Join(c.markdownDoctypes(), " · "))
+		return
+	}
+	required := c.fieldSet("", fm, t, c.exemptions(path), add)
+	if t.Directory != "" {
+		c.directory(path, fm, t.Directory, required, add)
+	}
+}
 
+// fieldSet checks one mapping against a doctype's field set: a frontmatter block,
+// a whole YAML file, or one entry or item of one. prefix leads every fault's field,
+// so a fault inside an entry names the path down to its key. It returns the fields
+// required here, `required_when` included.
+func (c *Checker) fieldSet(prefix string, fm *frontmatter.Doc, t *schema.Type, skip map[string]bool, add adder) []string {
 	required := append([]string(nil), t.Required...)
 	optional := append([]string(nil), t.Optional...)
 	for _, cond := range t.RequiredWhen {
@@ -161,14 +183,10 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 		}
 	}
 
-	skip := c.exemptions(path)
 	for _, f := range required {
 		if _, ok := fm.Get(f); !ok && !skip[f] {
-			add("missing", f, nil, "required on `"+t.Doctype+"`")
+			add("missing", prefix+f, nil, "required on `"+t.Doctype+"`")
 		}
-	}
-	if t.Directory != "" {
-		c.directory(path, fm, t.Directory, required, add)
 	}
 
 	allowed := map[string]bool{}
@@ -180,18 +198,19 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 	}
 	for _, name := range fm.Keys {
 		v := fm.Fields[name]
+		label := prefix + name
 		if !allowed[name] {
-			add("unknown", name, v, "not declared for `"+t.Doctype+"` in types/"+t.Slug+".yaml")
+			add("unknown", label, v, "not declared for `"+t.Doctype+"` in types/"+t.Slug+".yaml")
 			continue
 		}
 		spec := t.Resolved[name]
 		if spec == nil {
 			if len(c.S.Owners[name]) > 0 {
-				add("value", name, v, "`"+name+"` does not apply to `"+t.Doctype+"`")
+				add("value", label, v, "`"+name+"` does not apply to `"+t.Doctype+"`")
 			}
 			continue
 		}
-		c.field(name, v, spec, add)
+		c.field(label, v, spec, add)
 		if spec.Excludes == "" {
 			continue
 		}
@@ -202,11 +221,23 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 		for _, x := range each(v) {
 			for _, y := range each(other) {
 				if x != nil && value.Text(x) == value.Text(y) {
-					add("value", name, x, "repeats the file's own `"+spec.Excludes+"`")
+					add("value", label, x, "repeats the file's own `"+spec.Excludes+"`")
 				}
 			}
 		}
 	}
+	return required
+}
+
+// markdownDoctypes are the doctypes a page's `type:` may name.
+func (c *Checker) markdownDoctypes() []string {
+	var out []string
+	for _, dt := range c.S.Doctypes() {
+		if !c.S.Types[dt].IsYAML() {
+			out = append(out, dt)
+		}
+	}
+	return out
 }
 
 func (c *Checker) exemptions(path string) map[string]bool {
@@ -217,7 +248,7 @@ func (c *Checker) exemptions(path string) map[string]bool {
 	}
 	rel = filepath.ToSlash(rel)
 	for _, e := range c.S.Exempt {
-		if Fnmatch(rel, e.Paths) {
+		if schema.Fnmatch(rel, e.Paths) {
 			for _, f := range e.Omit {
 				out[f] = true
 			}

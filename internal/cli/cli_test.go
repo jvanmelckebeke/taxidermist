@@ -78,8 +78,25 @@ func TestHook(t *testing.T) {
 	}
 	gitIn(t, dir, "reset", "-q")
 
+	// A vocabulary's data file renders into format/, so changing it can leave a page stale.
+	data := "config/teams.yaml"
+	b, _ := os.ReadFile(data)
+	os.WriteFile(data, []byte(strings.Replace(string(b), "Runs interviews", "Holds interviews", 1)), 0o644)
+	gitIn(t, dir, "add", data)
+	if code, _, errs := run(t, "hook"); code != 1 || !strings.Contains(errs, "format/ is stale") {
+		t.Fatalf("stale vocabulary page: exit %d\n%s", code, errs)
+	}
+	gitIn(t, dir, "reset", "-q", "--hard")
+
+	testutil.Write(t, dir, "config/rota.yaml", "- {week: soon, team: platform, person: bob}\n")
+	gitIn(t, dir, "add", "config/rota.yaml")
+	if code, _, errs := run(t, "hook"); code != 1 || !strings.Contains(errs, `[value] [0].week: "soon"`) {
+		t.Fatalf("bad yaml: exit %d\n%s", code, errs)
+	}
+	gitIn(t, dir, "reset", "-q", "--hard")
+
 	p := "taxonomy/types/person.yaml"
-	b, _ := os.ReadFile(p)
+	b, _ = os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "How you know them.", "How you met.", 1)), 0o644)
 	gitIn(t, dir, "add", p)
 	if code, _, errs := run(t, "hook"); code != 1 || !strings.Contains(errs, "format/ is stale") {
@@ -133,6 +150,10 @@ func TestCheckStdin(t *testing.T) {
 	}
 	if code, _, _ := runIn(t, bad, "check", "--stdin-filename", "notes/new.md", "notes/tomato-blight.md"); code != 2 {
 		t.Errorf("with FILE arguments: exit %d", code)
+	}
+	code, out, _ = runIn(t, "platform:\n  purpose: p\n  lead: bob\n  archvied: true\n", "check", "--stdin-filename", "config/teams.yaml", "--json")
+	if code != 1 || !strings.Contains(out, `"field": "platform.archvied"`) {
+		t.Errorf("yaml: exit %d\n%s", code, out)
 	}
 }
 

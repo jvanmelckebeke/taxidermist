@@ -4,6 +4,7 @@ roots:
 - people
 - meetings
 - projects
+- config
 
 # A file whose `type:` has no types/ file: `error` makes it a fault, `report` tallies it.
 ungoverned: error

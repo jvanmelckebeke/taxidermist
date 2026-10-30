@@ -14,12 +14,13 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs, tax := newFlags("check", `taxidermist check [FILE ...]
 taxidermist check --stdin-filename PATH < FILE
 
-Check frontmatter against the schema. With no files, every root in scope.yaml is
-audited. Files outside the governed roots are dropped, so a caller can hand over
-every staged markdown file and scope.yaml decides which ones the schema governs.
+Check frontmatter, and the YAML files a doctype's files: names, against the schema.
+With no files, every root in scope.yaml is audited. Files outside the governed roots
+are dropped, so a caller can hand over every staged file and scope.yaml decides
+which ones the schema governs.
 
---stdin-filename checks the content on stdin as the file at PATH, which need not
-exist. PATH must sit under a governed root.`, stderr)
+--stdin-filename checks the content on stdin as the markdown or YAML file at PATH,
+which need not exist. PATH must sit under a governed root.`, stderr)
 	facets := fs.Bool("facets", false, "print every key and value in use per doctype, drift first")
 	ungoverned := fs.Bool("ungoverned", false, "list the files whose doctype has no schema, instead of tallying them")
 	kinds := fs.String("kind", "", "only report these kinds, comma-separated: "+strings.Join(check.Kinds, ", ")+", mismatch")

@@ -19,6 +19,10 @@ func (c *Checker) field(name string, v any, spec *schema.Field, add adder) {
 		c.keys(name, asMap(v), spec.Schema.Vals, add)
 		return
 	}
+	if spec.Value == "map" {
+		c.mapping(name, asMap(v), spec, add)
+		return
+	}
 	if spec.Value == "list" && len(spec.Items.Vals) > 0 {
 		for i, item := range v.([]any) {
 			label := name + "[" + strconv.Itoa(i) + "]"
@@ -46,6 +50,9 @@ func (c *Checker) field(name string, v any, spec *schema.Field, add adder) {
 func (c *Checker) element(label string, x any, spec *schema.Field, add adder) {
 	if x == nil {
 		return
+	}
+	if value.IsScalar(x) && !spec.Matches(value.Text(x)) {
+		add("value", label, x, "does not match `"+spec.Pattern+"`")
 	}
 	if spec.Reference != "" {
 		c.references(label, x, spec.Reference, add)
@@ -81,6 +88,33 @@ func (c *Checker) keys(label string, m map[string]any, sub []*schema.Field, add 
 	sort.Strings(extra)
 	for _, k := range extra {
 		add("shape", label+"."+k, m[k], "not a key of `"+label+"`. Allowed: "+strings.Join(sortedNames(sub), " · "))
+	}
+}
+
+// mapping checks a `value: map`: every key against `key:`, and every value against
+// `schema:`, as an object's keys, or against `values:`, as a field.
+func (c *Checker) mapping(label string, m map[string]any, spec *schema.Field, add adder) {
+	names := make([]string, 0, len(m))
+	for k := range m {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		key := label + "." + k
+		if spec.Key != nil {
+			c.element(key, k, spec.Key, add)
+		}
+		switch {
+		case len(spec.Schema.Vals) > 0:
+			sub, ok := asMapOK(m[k])
+			if !ok {
+				add("shape", key, m[k], "expected a mapping with "+strings.Join(sortedNames(spec.Schema.Vals), " · ")+", got "+value.TypeName(m[k]))
+				continue
+			}
+			c.keys(key, sub, spec.Schema.Vals, add)
+		case spec.Values != nil:
+			c.field(key, m[k], spec.Values, add)
+		}
 	}
 }
 
@@ -123,7 +157,7 @@ func TypeOK(v any, spec string) bool {
 			if _, ok := v.(bool); ok {
 				return true
 			}
-		case "object":
+		case "object", "map":
 			if _, ok := asMapOK(v); ok {
 				return true
 			}

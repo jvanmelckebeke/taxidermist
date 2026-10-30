@@ -55,6 +55,10 @@ func TestValidateContent(t *testing.T) {
 	if _, err := tax.ValidateContent("elsewhere/x.md", []byte("---\ntype: note\n---\n")); err == nil || !strings.Contains(err.Error(), "elsewhere/x.md") {
 		t.Errorf("outside the roots: %v", err)
 	}
+	r, err = tax.ValidateContent("config/teams.yaml", []byte("bus/gate:\n  purpose: p\n  lead: bob\n  archvied: true\n"))
+	if err != nil || len(r.Faults) != 2 || r.Faults[1].Field != "bus/gate.archvied" || r.Faults[1].Kind != "unknown" {
+		t.Fatalf("yaml: %v %+v", err, r)
+	}
 }
 
 func TestResultJSON(t *testing.T) {

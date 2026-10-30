@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/check"
@@ -16,8 +17,9 @@ func runHook(args []string, stdout, stderr io.Writer) int {
 	fs, tax := newFlags("hook", `taxidermist hook
 
 The pre-commit gate. Checks only; it never rewrites a file.
-  1. when anything under the taxonomy is staged: format/ must be current (docs --check)
-  2. the staged markdown must match the schema (check, on those files only)
+  1. when anything under the taxonomy, or a data file a vocabulary reads with from:,
+     is staged: format/ must be current (docs --check)
+  2. the staged markdown and YAML must match the schema (check, on those files only)
 
 Scoped to staged files on purpose: a repo-wide gate would block every commit until
 the whole backlog is fixed, which is how a hook earns a permanent --no-verify.
@@ -47,7 +49,7 @@ Audit the backlog with "taxidermist check".`, stderr)
 		if p == taxAbs || strings.HasPrefix(p, taxAbs+string(filepath.Separator)) {
 			taxChanged = true
 		}
-		if strings.HasSuffix(p, ".md") {
+		if strings.HasSuffix(p, ".md") || schema.IsYAMLPath(p) {
 			staged = append(staged, p)
 		}
 	}
@@ -57,6 +59,11 @@ Audit the backlog with "taxidermist check".`, stderr)
 	s, ok := load(*tax, stderr)
 	if !ok {
 		return 2
+	}
+	// A vocabulary read with `from:` is rendered from its data file, so a change to
+	// that file can leave format/ stale without touching the taxonomy.
+	for _, src := range s.Sources {
+		taxChanged = taxChanged || slices.Contains(staged, filepath.Join(s.Base, filepath.FromSlash(src.From)))
 	}
 	code := 0
 	if taxChanged {

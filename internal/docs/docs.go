@@ -1,5 +1,5 @@
 // Package docs renders taxonomy/format/: one page per doctype with a fill-in template
-// and every vocabulary it uses.
+// and every vocabulary it uses, and one page per vocabulary under vocabularies/.
 //
 // The schema is split across several files so each stays readable, and that split is
 // what makes "what does this doctype need?" a multi-file question. These pages resolve
@@ -46,8 +46,25 @@ func Pages(s *schema.Schema) (map[string]string, error) {
 			"every field and every vocabulary it uses. Generated from " + readmeLink(s) +
 			", which is the schema and the thing to edit.", "",
 	}
+	var files []string
 	for _, dt := range s.Doctypes() {
-		idx = append(idx, "- [`"+dt+"`]("+s.Types[dt].Slug+".md)")
+		if t := s.Types[dt]; t.IsYAML() {
+			files = append(files, "- [`"+t.Files+"`]("+t.Slug+".md)")
+		} else {
+			idx = append(idx, "- [`"+dt+"`]("+t.Slug+".md)")
+		}
+	}
+	if len(files) > 0 {
+		idx = append(append(idx, "", "## YAML files", "",
+			"A YAML file under a governed root takes the doctype whose `files:` glob matches its path. "+
+				"Each page resolves one glob."), "")
+		idx = append(idx, files...)
+	}
+	if names := s.VocabularyNames(); len(names) > 0 {
+		idx = append(idx, "", "## Vocabularies", "", "Every shared value list, on a page of its own.", "")
+		for _, v := range names {
+			idx = append(idx, "- "+vocabLink(v))
+		}
 	}
 	if len(s.Segments) > 0 {
 		idx = append(idx, "", "## Folders", "",
@@ -84,7 +101,45 @@ func Pages(s *schema.Schema) (map[string]string, error) {
 			"parse leaves the file invisible to every tool that reads it, while it looks correct on "+
 			"disk. An unescaped quote, or a `: ` inside an unquoted scalar, is where it usually breaks.", "")
 	out["README"] = strings.Join(idx, "\n")
+	for _, v := range s.VocabularyNames() {
+		out[VocabularyDir+"/"+v] = vocabularyPage(s, v)
+	}
 	return out, nil
+}
+
+// VocabularyDir is the folder under format/ that holds one page per vocabulary.
+const VocabularyDir = "vocabularies"
+
+// vocabularyPage is one vocabulary's values and what each means, with the file that
+// declares them.
+func vocabularyPage(s *schema.Schema, name string) string {
+	L := []string{"# Vocabulary `" + name + "`", "", banner(s), ""}
+	if src, ok := s.Sources[name]; ok {
+		line := "Read from [`" + src.From + "`](../../../" + src.From + "): "
+		if src.At != "" {
+			line += "the keys of `" + src.At + "`"
+		} else {
+			line += "its top-level keys"
+		}
+		if src.Means != "" {
+			line += ", each meaning its entry's `" + src.Means + ":`"
+		}
+		L = append(L, line+". A value is added there, not here.", "")
+	} else {
+		L = append(L, "Defined in [../../vocabularies/"+name+".yaml](../../vocabularies/"+name+".yaml).", "")
+	}
+	enum := s.Vocabularies[name]
+	if hasMeanings(enum) {
+		L = append(L, valuesTable(enum, true)...)
+	} else {
+		var keys []string
+		for _, d := range enum {
+			keys = append(keys, "`"+d.Key+"`")
+		}
+		sort.Strings(keys)
+		L = append(L, "Values: "+strings.Join(keys, " · ")+".")
+	}
+	return strings.Join(L, "\n")
 }
 
 // Sync writes the pages, or with check set reports the stale ones and writes nothing.
@@ -106,7 +161,7 @@ func Sync(s *schema.Schema, check bool) (stale []string, written, total int, err
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		p := filepath.Join(out, name+".md")
+		p := filepath.Join(out, filepath.FromSlash(name)+".md")
 		body := strings.TrimRight(pages[name], "\n") + "\n"
 		if cur, err := os.ReadFile(p); err == nil && string(cur) == body {
 			continue
@@ -115,15 +170,21 @@ func Sync(s *schema.Schema, check bool) (stale []string, written, total int, err
 			stale = append(stale, p)
 			continue
 		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return nil, 0, 0, err
+		}
 		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			return nil, 0, 0, err
 		}
 		written++
 	}
 	existing, _ := filepath.Glob(filepath.Join(out, "*.md"))
+	vocab, _ := filepath.Glob(filepath.Join(out, VocabularyDir, "*.md"))
+	existing = append(existing, vocab...)
 	sort.Strings(existing)
 	for _, p := range existing {
-		if _, ok := pages[strings.TrimSuffix(filepath.Base(p), ".md")]; ok {
+		rel, _ := filepath.Rel(out, p)
+		if _, ok := pages[strings.TrimSuffix(filepath.ToSlash(rel), ".md")]; ok {
 			continue
 		}
 		if check {

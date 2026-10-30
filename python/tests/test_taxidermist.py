@@ -72,6 +72,11 @@ def test_validate_content(kb):
     assert r.ok
 
 
+def test_validate_yaml_content(kb):
+    r = taxidermist.validate_content("platform:\n  purpose: p\n  lead: bob\n  archvied: true\n", "config/teams.yaml")
+    assert [(f.kind, f.field, f.value) for f in r.faults] == [("unknown", "platform.archvied", "true")]
+
+
 def test_content_outside_the_roots(kb):
     with pytest.raises(TaxidermistError, match="elsewhere/x.md"):
         taxidermist.validate_content(BAD_NOTE, "elsewhere/x.md")

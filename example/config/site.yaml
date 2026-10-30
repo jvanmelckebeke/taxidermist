@@ -1,0 +1,6 @@
+name: Example knowledge base
+timezone: Europe/Brussels
+default_team: platform
+labels:
+  wip: Still being written.
+  stale: Not looked at in a year.

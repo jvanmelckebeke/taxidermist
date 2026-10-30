@@ -22,8 +22,8 @@ func TestExamplePagesAreCurrent(t *testing.T) {
 	if len(stale) > 0 {
 		t.Errorf("stale: %v (run taxidermist docs in example/)", stale)
 	}
-	if total != len(s.Types)+1 {
-		t.Errorf("%d pages for %d doctypes", total, len(s.Types))
+	if total != len(s.Types)+len(s.Vocabularies)+1 {
+		t.Errorf("%d pages for %d doctypes and %d vocabularies", total, len(s.Types), len(s.Vocabularies))
 	}
 }
 
@@ -234,5 +234,80 @@ func TestTheSchemaLinkNamesTheDirectory(t *testing.T) {
 				t.Errorf("readme %v: %s.md lacks %q or still links [..]", readme, page, want)
 			}
 		}
+	}
+}
+
+func TestYAMLPagesNameTheFilesAndCopyAWholeFileEntryOrItem(t *testing.T) {
+	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for page, want := range map[string]string{
+		"site":      "# Format of `config/site.yaml`\n",
+		"team":      "```yaml\n<name>:\n  purpose: <str>\n  lead: <str>\n  topics: [<garden | hiring | house | infra>]   # optional\n```\n",
+		"rota-week": "```yaml\n- week: <str>\n  team: <str>\n  person: <str>\n```\n",
+	} {
+		if !strings.Contains(pages[page], want) {
+			t.Errorf("%s.md lacks %q:\n%s", page, want, pages[page])
+		}
+		if strings.Contains(pages[page], "---\n") {
+			t.Errorf("%s.md has frontmatter fences", page)
+		}
+	}
+	for page, wants := range map[string][]string{
+		"site": {"labels:   # optional\n  <name>: <str>", "· matches `^[A-Z][A-Za-z_]+/[A-Za-z_]+$`",
+			"Shared vocabulary [`team`](vocabularies/team.md), read from [`config/teams.yaml`](../../config/teams.yaml).",
+			"| `platform` | Keeps the servers and the build running. |"},
+		"team":               {"One entry per top-level key, each with the fields below. The key matches `^[a-z][a-z-]*$`."},
+		"rota-week":          {"Values: any top-level key of [`config/teams.yaml`](../../config/teams.yaml)."},
+		"vocabularies/team":  {"# Vocabulary `team`", "Read from [`config/teams.yaml`](../../../config/teams.yaml): its top-level keys, each meaning its entry's `purpose:`."},
+		"vocabularies/topic": {"Defined in [../../vocabularies/topic.yaml](../../vocabularies/topic.yaml).", "| `garden` | home | Anything that grows. |  |"},
+		"README":             {"- [`config/teams.yaml`](team.md)", "- [`topic`](vocabularies/topic.md)"},
+	} {
+		for _, w := range wants {
+			if !strings.Contains(pages[page], w) {
+				t.Errorf("%s.md lacks %q", page, w)
+			}
+		}
+	}
+}
+
+func TestAMapOfObjectsRendersOneEntryUnderAPlaceholder(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	testutil.Write(t, tax, "types/site.yaml", "files: config/site.yaml\nrequired: [name, timezone, groups]\nfields:\n"+
+		"  groups:\n    value: map\n    schema:\n      meaning: {value: str, required: true, guidance: g}\n"+
+		"      read_by: {value: list, guidance: g}\n    guidance: g\n")
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, _ := Pages(s)
+	want := "groups:\n  <name>:\n    meaning: <str>\n    read_by: []   # optional\n"
+	if !strings.Contains(pages["site"], want) {
+		t.Errorf("site.md lacks %q:\n%s", want, pages["site"])
+	}
+}
+
+func TestAStaleVocabularyPageIsPruned(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	stray := testutil.Write(t, tax, "format/vocabularies/gone.md", "old\n")
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale, _, _, _ := Sync(s, true); len(stale) != 1 || stale[0] != stray {
+		t.Errorf("check reported %v", stale)
+	}
+	if _, _, _, err := Sync(s, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Error("stray vocabulary page survived a write")
 	}
 }

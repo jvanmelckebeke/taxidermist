@@ -1,0 +1,20 @@
+# `shape: list`: every item takes the field set.
+files: config/rota.yaml
+shape: list
+required:
+- week
+- team
+- person
+fields:
+  week:
+    value: str
+    pattern: '^\d{4}-W\d{2}$'
+    guidance: The ISO week, as `2026-W27`.
+  team:
+    value: str
+    reference: config/teams.yaml
+    guidance: The team on call that week.
+  person:
+    value: str
+    reference: people
+    guidance: The person page slug of whoever answers.
