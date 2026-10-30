@@ -194,7 +194,7 @@ func TestDeclaredExemptionIsHonoured(t *testing.T) {
 }
 
 func TestReferenceMustNameAPage(t *testing.T) {
-	expect(t, faults(t, "notes/x.md", note("people: [alice, carol]\n")), "value people")
+	expect(t, faults(t, "notes/x.md", note("people: [alice, carol]\n")), "value people[1]")
 }
 
 func TestListItemsAreCheckedAsMappings(t *testing.T) {
@@ -204,6 +204,49 @@ func TestListItemsAreCheckedAsMappings(t *testing.T) {
 	expect(t, faults(t, "meetings/x.md", strings.Replace(m, "%s", "- what: a\n  owner: carol\n  due: 2026-08-01\n", 1)),
 		"shape actions[0].due", "value actions[0].owner")
 	expect(t, faults(t, "meetings/x.md", strings.Replace(m, "%s", "- owner: alice\n", 1)), "missing actions[0].what")
+}
+
+// withReviewers gives a note's `review:` a list against a vocabulary, a list of
+// references, and an object nested inside it.
+func withReviewers(dir string) {
+	p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+	b, _ := os.ReadFile(p)
+	b = []byte(strings.Replace(string(b), "        guidance: When to look again.\n", `        guidance: When to look again.
+      topics:
+        value: list
+        vocabulary: topic
+        guidance: What the review covered.
+      by:
+        value: list
+        reference: people
+        guidance: Who reviewed.
+      sign_off:
+        value: object
+        guidance: Who signed off.
+        schema:
+          who:
+            value: str
+            reference: people
+            required: true
+            guidance: The person.
+          status:
+            value: str
+            guidance: How it ended.
+            definitions:
+              agreed: Signed off.
+`, 1))
+	os.WriteFile(p, b, 0o644)
+}
+
+func TestNestedKeysGetTheTopLevelChecks(t *testing.T) {
+	r := func(review string) string { return note("review:\n  open: false\n" + review) }
+	expect(t, faults(t, "notes/x.md", r("  topics: [hiring, garden]\n  by: [alice]\n  sign_off: {who: alice, status: agreed}\n"), withReviewers))
+	expect(t, faults(t, "notes/x.md", r("  topics: [hiring, cooking]\n"), withReviewers), "value review.topics[1]")
+	expect(t, faults(t, "notes/x.md", r("  topics: hiring\n"), withReviewers), "type review.topics")
+	expect(t, faults(t, "notes/x.md", r("  by: [alice, carol]\n"), withReviewers), "value review.by[1]")
+	expect(t, faults(t, "notes/x.md", r("  sign_off: {who: carol, status: maybe, at: 2026-08-01}\n"), withReviewers),
+		"value review.sign_off.who", "value review.sign_off.status", "shape review.sign_off.at")
+	expect(t, faults(t, "notes/x.md", r("  sign_off: {status: agreed}\n"), withReviewers), "missing review.sign_off.who")
 }
 
 func TestLiteralDoctypeWithASpace(t *testing.T) {
@@ -430,7 +473,7 @@ func TestASlugIsUniqueUnderTheFixedPrefix(t *testing.T) {
 func TestAReferenceReachesPagesInSubfolders(t *testing.T) {
 	carol := func(dir string) { put(dir, "people/team/carol.md", "---\ntype: person\ntitle: Carol\n---\n") }
 	expect(t, faults(t, "notes/x.md", note("people: [alice, carol]\n"), carol))
-	expect(t, faults(t, "notes/x.md", note("people: [team]\n"), carol), "value people")
+	expect(t, faults(t, "notes/x.md", note("people: [team]\n"), carol), "value people[0]")
 }
 
 // withProject gives a note a `project:` naming a folder under projects/.
