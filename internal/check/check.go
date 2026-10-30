@@ -32,6 +32,7 @@ package check
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -96,6 +97,36 @@ func (c *Checker) Content(path string, raw []byte) *Result {
 
 type adder func(kind, field string, v any, why string)
 
+// file checks one file, as YAML or as a markdown page by its extension.
+func (c *Checker) file(path string, raw []byte, r *Result) {
+	add := func(kind, field string, v any, why string) {
+		r.Faults = append(r.Faults, Fault{Path: path, Kind: kind, Field: field, Value: v, Why: why})
+	}
+	if schema.IsYAMLPath(path) {
+		c.yamlFile(path, raw, r, add)
+		return
+	}
+	c.markdownFile(path, raw, r, add)
+}
+
+// exemptions are the fields exempt.yaml lets the file at path omit.
+func (c *Checker) exemptions(path string) map[string]bool {
+	out := map[string]bool{}
+	rel, err := filepath.Rel(c.S.Base, path)
+	if err != nil {
+		return out
+	}
+	rel = filepath.ToSlash(rel)
+	for _, e := range c.S.Exempt {
+		if schema.Fnmatch(rel, e.Paths) {
+			for _, f := range e.Omit {
+				out[f] = true
+			}
+		}
+	}
+	return out
+}
+
 func each(v any) []any {
 	if l, ok := v.([]any); ok {
 		return l
@@ -118,19 +149,6 @@ func member(v any, enum []schema.Def) bool {
 	return false
 }
 
-func sortedKeys(enum []schema.Def) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, d := range enum {
-		if !seen[d.Key] {
-			seen[d.Key] = true
-			out = append(out, d.Key)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func sortedNames(fs []*schema.Field) []string {
 	out := make([]string, len(fs))
 	for i, f := range fs {
@@ -138,15 +156,6 @@ func sortedNames(fs []*schema.Field) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
 }
 
 func firstLine(s string) string {

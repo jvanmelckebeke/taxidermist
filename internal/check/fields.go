@@ -1,33 +1,33 @@
 package check
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/jvanmelckebeke/taxidermist/internal/frontmatter"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
 func (c *Checker) field(name string, v any, spec *schema.Field, add adder) {
-	if !TypeOK(v, spec.Value) {
+	if !value.Is(v, spec.Value) {
 		add("type", name, v, "expected "+spec.Value+", got "+value.TypeName(v))
 		return
 	}
-	if spec.Value == "object" {
-		c.keys(name, asMap(v), spec.Schema.Vals, add)
+	m, _ := value.AsMap(v)
+	switch spec.Value {
+	case "object":
+		c.keys(name, m, spec.Schema.Vals, add)
 		return
-	}
-	if spec.Value == "map" {
-		c.mapping(name, asMap(v), spec, add)
+	case "map":
+		c.mapping(name, m, spec, add)
 		return
 	}
 	if spec.Value == "list" && len(spec.Items.Vals) > 0 {
 		for i, item := range v.([]any) {
 			label := name + "[" + strconv.Itoa(i) + "]"
-			m, ok := asMapOK(item)
+			m, ok := value.AsMap(item)
 			if !ok {
 				add("shape", label, item, "expected a mapping with "+strings.Join(sortedNames(spec.Items.Vals), " · ")+", got "+value.TypeName(item))
 				continue
@@ -60,7 +60,7 @@ func (c *Checker) element(label string, x any, spec *schema.Field, add adder) {
 		return
 	}
 	if enum := spec.Enum(); len(enum) > 0 && !member(x, enum) {
-		add("value", label, x, "allowed: "+strings.Join(sortedKeys(enum), " · "))
+		add("value", label, x, "allowed: "+strings.Join(schema.SortedKeys(enum), " · "))
 	}
 }
 
@@ -107,7 +107,7 @@ func (c *Checker) mapping(label string, m map[string]any, spec *schema.Field, ad
 		}
 		switch {
 		case len(spec.Schema.Vals) > 0:
-			sub, ok := asMapOK(m[k])
+			sub, ok := value.AsMap(m[k])
 			if !ok {
 				add("shape", key, m[k], "expected a mapping with "+strings.Join(sortedNames(spec.Schema.Vals), " · ")+", got "+value.TypeName(m[k]))
 				continue
@@ -119,91 +119,12 @@ func (c *Checker) mapping(label string, m map[string]any, spec *schema.Field, ad
 	}
 }
 
-func asMapOK(v any) (map[string]any, bool) {
-	switch m := v.(type) {
-	case map[string]any:
-		return m, true
-	case map[any]any:
-		out := make(map[string]any, len(m))
-		for k, x := range m {
-			out[value.Text(k)] = x
-		}
-		return out, true
-	}
-	return nil, false
-}
-
-func asMap(v any) map[string]any {
-	m, _ := asMapOK(v)
-	return m
-}
-
-// TypeOK checks a value against a `value:` spec, possibly an `a|b` union. An empty
-// spec checks nothing.
-func TypeOK(v any, spec string) bool {
-	if spec == "" {
-		return true
-	}
-	for _, alt := range strings.Split(spec, "|") {
-		switch strings.TrimSpace(alt) {
-		case "str":
-			if _, ok := v.(string); ok {
-				return true
-			}
-		case "list":
-			if _, ok := v.([]any); ok {
-				return true
-			}
-		case "bool":
-			if _, ok := v.(bool); ok {
-				return true
-			}
-		case "object", "map":
-			if _, ok := asMapOK(v); ok {
-				return true
-			}
-		case "date":
-			if _, ok := v.(time.Time); ok {
-				return true
-			}
-		case "int":
-			switch v.(type) {
-			case int, int64, uint64:
-				return true
-			}
-		case "float":
-			switch v.(type) {
-			case int, int64, uint64, float64:
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // fieldSet checks one mapping against a doctype's field set: a frontmatter block,
 // a whole YAML file, or one entry or item of one. prefix leads every fault's field,
 // so a fault inside an entry names the path down to its key. It returns the fields
 // required here, `required_when` included.
-func (c *Checker) fieldSet(prefix string, fm *frontmatter.Doc, t *schema.Type, skip map[string]bool, add adder) []string {
-	required := append([]string(nil), t.Required...)
-	optional := append([]string(nil), t.Optional...)
-	for _, cond := range t.RequiredWhen {
-		all := true
-		for i, k := range cond.When.Keys {
-			got, _ := fm.Get(k)
-			if value.Text(got) != value.Text(cond.When.Vals[i]) {
-				all = false
-				break
-			}
-		}
-		if all {
-			required = append(required, cond.Field)
-		} else if !contains(optional, cond.Field) {
-			optional = append(optional, cond.Field)
-		}
-	}
-
+func (c *Checker) fieldSet(prefix string, fm *value.Mapping, t *schema.Type, skip map[string]bool, add adder) []string {
+	required, optional := obligations(fm, t)
 	for _, f := range required {
 		if _, ok := fm.Get(f); !ok && !skip[f] {
 			add("missing", prefix+f, nil, "required on `"+t.Doctype+"`")
@@ -248,4 +169,27 @@ func (c *Checker) fieldSet(prefix string, fm *frontmatter.Doc, t *schema.Type, s
 		}
 	}
 	return required
+}
+
+// obligations are the fields a mapping must and may carry: the doctype's lists, with
+// each `required_when` field required where its condition holds and optional elsewhere.
+func obligations(fm *value.Mapping, t *schema.Type) (required, optional []string) {
+	required = append([]string(nil), t.Required...)
+	optional = append([]string(nil), t.Optional...)
+	for _, cond := range t.RequiredWhen {
+		all := true
+		for i, k := range cond.When.Keys {
+			got, _ := fm.Get(k)
+			if value.Text(got) != value.Text(cond.When.Vals[i]) {
+				all = false
+				break
+			}
+		}
+		if all {
+			required = append(required, cond.Field)
+		} else if !slices.Contains(optional, cond.Field) {
+			optional = append(optional, cond.Field)
+		}
+	}
+	return required, optional
 }

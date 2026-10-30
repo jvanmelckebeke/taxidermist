@@ -82,7 +82,8 @@ const VocabularyDir = "vocabularies"
 // declares them.
 func vocabularyPage(s *schema.Schema, name string) string {
 	L := []string{"# Vocabulary `" + name + "`", "", banner(s), ""}
-	if src, ok := s.Sources[name]; ok {
+	v := s.Vocabularies[name]
+	if src := v.Source; src != nil {
 		line := "Read from [`" + src.From + "`](../../../" + src.From + "): "
 		if src.At != "" {
 			line += "the keys of `" + src.At + "`"
@@ -96,7 +97,7 @@ func vocabularyPage(s *schema.Schema, name string) string {
 	} else {
 		L = append(L, "Defined in [../../vocabularies/"+name+".yaml](../../vocabularies/"+name+".yaml).", "")
 	}
-	enum := s.Vocabularies[name]
+	enum := v.Defs
 	if hasMeanings(enum) {
 		L = append(L, valuesTable(enum, true)...)
 	} else {

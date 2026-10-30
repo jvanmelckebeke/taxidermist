@@ -10,6 +10,12 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// Vocabulary is a value list shared by fields on several doctypes.
+type Vocabulary struct {
+	Defs   []Def
+	Source *Source // set when the values are read from a data file with `from:`
+}
+
 // Source is where a vocabulary read with `from:` takes its values: the keys of the
 // mapping at At in the data file From, each meaning its entry's Means key.
 type Source struct {
@@ -38,7 +44,8 @@ func (s *Schema) loadVocabularies() error {
 			if err != nil {
 				return err
 			}
-			s.Vocabularies[name], s.Sources[name] = defs, v.Source
+			src := v.Source
+			s.Vocabularies[name] = &Vocabulary{Defs: defs, Source: &src}
 			continue
 		}
 		if v.At != "" || v.Means != "" {
@@ -66,7 +73,19 @@ func (s *Schema) loadVocabularies() error {
 			}
 			defs = append(defs, Def{Key: key, Means: m.Means, Not: m.Not})
 		}
-		s.Vocabularies[name] = defs
+		s.Vocabularies[name] = &Vocabulary{Defs: defs}
+	}
+	return nil
+}
+
+// checkSources rejects a vocabulary read from a file no doctype governs.
+func (s *Schema) checkSources() error {
+	for _, name := range s.VocabularyNames() {
+		src := s.Vocabularies[name].Source
+		if src != nil && len(s.TypesOf(src.From)) == 0 {
+			return errf("vocabularies/%s.yaml reads from %s, which no type governs. Give it a type with "+
+				"`files:`, so the file's shape is checked before its keys become values.", name, src.From)
+		}
 	}
 	return nil
 }

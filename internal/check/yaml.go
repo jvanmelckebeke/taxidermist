@@ -8,7 +8,6 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/jvanmelckebeke/taxidermist/internal/frontmatter"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
@@ -29,7 +28,7 @@ func (c *Checker) yamlFile(path string, raw []byte, r *Result, add adder) {
 			r.Ungoverned[NoFilesMatch] = append(r.Ungoverned[NoFilesMatch], path)
 			return
 		}
-		add("value", "<file>", nil, "no doctype's `files:` matches "+rel+". Known: "+strings.Join(c.globs(), " · "))
+		add("value", "<file>", nil, "no doctype's `files:` matches "+rel+". Known: "+strings.Join(c.S.Globs(), " · "))
 		return
 	case len(types) > 1:
 		var names []string
@@ -111,7 +110,7 @@ func (c *Checker) entry(label string, n *yaml.Node, t *schema.Type, skip map[str
 		prefix = label + "."
 	}
 	if isNull(n) {
-		c.fieldSet(prefix, &frontmatter.Doc{Fields: map[string]any{}}, t, skip, add)
+		c.fieldSet(prefix, &value.Mapping{Fields: map[string]any{}}, t, skip, add)
 		return
 	}
 	if n.Kind != yaml.MappingNode {
@@ -120,7 +119,7 @@ func (c *Checker) entry(label string, n *yaml.Node, t *schema.Type, skip map[str
 		add("type", label, got, "expected a mapping of `"+t.Doctype+"`'s fields, got "+value.TypeName(got))
 		return
 	}
-	doc, err := frontmatter.FromNode(n)
+	doc, err := value.MappingOf(n)
 	if err != nil {
 		add("parse", label, nil, firstLine(err.Error()))
 		return
@@ -140,17 +139,6 @@ func (c *Checker) rel(path string) string {
 		return path
 	}
 	return filepath.ToSlash(rel)
-}
-
-// globs lists every YAML doctype's `files:`.
-func (c *Checker) globs() []string {
-	var out []string
-	for _, dt := range c.S.Doctypes() {
-		if t := c.S.Types[dt]; t.IsYAML() {
-			out = append(out, t.Files)
-		}
-	}
-	return out
 }
 
 func joinAnd(xs []string) string {

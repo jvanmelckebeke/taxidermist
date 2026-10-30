@@ -22,6 +22,65 @@ type Segment struct {
 	Values     []Def  // the vocabulary's definitions; nil for a pattern
 }
 
+// loadScope reads scope.yaml: the roots, how it treats unknown doctypes and how the
+// repo runs taxidermist. It returns the segment rules, which bind once the
+// vocabularies have loaded.
+func (s *Schema) loadScope() ([]rawSegment, error) {
+	var scope struct {
+		Roots      []string     `yaml:"roots"`
+		Ungoverned string       `yaml:"ungoverned"`
+		Invocation string       `yaml:"invocation"`
+		Segments   []rawSegment `yaml:"segments"`
+	}
+	if err := read(s.Dir, "scope.yaml", &scope); err != nil {
+		return nil, err
+	}
+	s.Roots, s.Ungoverned = scope.Roots, scope.Ungoverned
+	if s.Ungoverned == "" {
+		s.Ungoverned = "error"
+	}
+	if s.Ungoverned != "error" && s.Ungoverned != "report" {
+		return nil, errf("scope.yaml sets `ungoverned: %s`; it takes `error` or `report`.", s.Ungoverned)
+	}
+	s.Invocation = strings.TrimSpace(scope.Invocation)
+	if s.Invocation == "" {
+		s.Invocation = "taxidermist"
+	}
+	if !strings.Contains(s.Invocation, "{command}") {
+		s.Invocation += " {command}"
+	}
+	return scope.Segments, nil
+}
+
+// loadExempt reads exempt.yaml.
+func (s *Schema) loadExempt() error {
+	var exempt struct {
+		Exempt []Exemption `yaml:"exempt"`
+	}
+	if err := read(s.Dir, "exempt.yaml", &exempt); err != nil {
+		return err
+	}
+	for i, e := range exempt.Exempt {
+		if e.Paths == "" {
+			return errf("exempt.yaml entry %d has no `paths:` glob.", i+1)
+		}
+	}
+	s.Exempt = exempt.Exempt
+	return nil
+}
+
+// loadSegments binds scope.yaml's segment rules.
+func (s *Schema) loadSegments(segments []rawSegment) error {
+	for i, r := range segments {
+		seg, err := s.segment(r)
+		if err != nil {
+			return errf("scope.yaml segment %d: %v", i+1, err)
+		}
+		s.Segments = append(s.Segments, seg)
+	}
+	return nil
+}
+
 type rawSegment struct {
 	Path       string `yaml:"path"`
 	Vocabulary string `yaml:"vocabulary"`
@@ -53,11 +112,11 @@ func (s *Schema) segment(r rawSegment) (*Segment, error) {
 	case (r.Vocabulary == "") == (r.Pattern == ""):
 		return nil, fmt.Errorf("`%s` needs exactly one of `vocabulary:` and `pattern:`", r.Path)
 	case r.Vocabulary != "":
-		defs, ok := s.Vocabularies[r.Vocabulary]
+		v, ok := s.Vocabularies[r.Vocabulary]
 		if !ok {
 			return nil, fmt.Errorf("`%s` names vocabulary `%s`, and vocabularies/%s.yaml does not exist", r.Path, r.Vocabulary, r.Vocabulary)
 		}
-		seg.Values = defs
+		seg.Values = v.Defs
 	default:
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
