@@ -8,6 +8,7 @@ import (
 
 	"github.com/jvanmelckebeke/taxidermist"
 	"github.com/jvanmelckebeke/taxidermist/internal/check"
+	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 )
 
 func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -47,12 +48,7 @@ which need not exist. PATH must sit under a governed root.`, stderr)
 			return 2
 		}
 	}
-	want := map[string]bool{}
-	for _, k := range strings.Split(*kinds, ",") {
-		if k = strings.TrimSpace(k); k != "" {
-			want[k] = true
-		}
-	}
+	want := kindSet(*kinds)
 	if *asJSON && !*facets && !*ungoverned {
 		return checkJSON(stdout, stderr, *tax, files, *stdinName, content, want)
 	}
@@ -84,14 +80,20 @@ which need not exist. PATH must sit under a governed root.`, stderr)
 		printUngoverned(stdout, r)
 		return 0
 	}
+	return report(stdout, stderr, s, r, want, *asTOON, *verbose)
+}
+
+// report prints a check's findings of the wanted kinds, as TOON or as text, and
+// returns the exit code.
+func report(stdout, stderr io.Writer, s *schema.Schema, r *check.Result, want map[string]bool, asTOON, verbose bool) int {
 	if len(want) > 0 {
 		r.Faults, r.Warnings = only(r.Faults, want), only(r.Warnings, want)
 	}
-	if *asTOON {
+	if asTOON {
 		writeTOON(stdout, r)
 	} else {
-		writeText(stdout, stderr, s, r, *verbose)
-		writeWarnings(stderr, s, r, *verbose)
+		writeText(stdout, stderr, s, r, verbose)
+		writeWarnings(stderr, s, r, verbose)
 	}
 	if len(r.Faults) > 0 {
 		return 1
@@ -148,4 +150,15 @@ func onlyFindings(fs []taxidermist.Finding, want map[string]bool) []taxidermist.
 		}
 	}
 	return kept
+}
+
+// kindSet reads --kind's comma-separated list.
+func kindSet(kinds string) map[string]bool {
+	want := map[string]bool{}
+	for _, k := range strings.Split(kinds, ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			want[k] = true
+		}
+	}
+	return want
 }

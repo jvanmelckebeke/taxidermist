@@ -69,6 +69,18 @@ func (t *Type) Declared() map[string]bool {
 	return out
 }
 
+// loadTypes reads every types/<slug>.yaml.
+func (s *Schema) loadTypes() error {
+	files, _ := filepath.Glob(filepath.Join(s.Dir, "types", "*.yaml"))
+	sort.Strings(files)
+	for _, file := range files {
+		if err := s.loadType(file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Schema) loadType(file string) error {
 	slug := strings.TrimSuffix(filepath.Base(file), ".yaml")
 	rel := "types/" + filepath.Base(file)
@@ -98,6 +110,16 @@ func (s *Schema) loadType(file string) error {
 		}
 	}
 
+	if err := s.compose(t, rel); err != nil {
+		return err
+	}
+	s.Types[t.Doctype] = t
+	return nil
+}
+
+// compose resolves every field the doctype carries: its traits' fields, then the
+// singletons that apply to it, then its own, each later one winning.
+func (s *Schema) compose(t *Type, rel string) error {
 	declared := t.Declared()
 	for _, name := range t.Traits {
 		tr := s.Trait(name)
@@ -137,7 +159,6 @@ func (s *Schema) loadType(file string) error {
 		t.Resolved[f.Name] = f
 		s.own(f.Name, t.Doctype)
 	}
-	s.Types[t.Doctype] = t
 	return nil
 }
 

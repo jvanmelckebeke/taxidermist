@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,7 +25,7 @@ func traitBreadth(s *schema.Schema, add adder) {
 	for _, tr := range s.Traits {
 		n := 0
 		for _, dt := range doctypes {
-			if contains(s.Types[dt].Traits, tr.Name) {
+			if slices.Contains(s.Types[dt].Traits, tr.Name) {
 				n++
 			}
 		}
@@ -68,7 +69,7 @@ func declaredOnce(s *schema.Schema, add adder) {
 			}
 		}
 		for _, f := range s.Singletons {
-			if contains(f.AppliesTo, dt) {
+			if slices.Contains(f.AppliesTo, dt) {
 				seen[f.Name]++
 			}
 		}

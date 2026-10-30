@@ -3,6 +3,7 @@ package schema
 import (
 	"fmt"
 	"regexp"
+	"sort"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -13,6 +14,20 @@ type Def struct {
 	Means string
 	Not   string // what the value is not for, where a neighbour is easy to confuse with it
 	Group string // the vocabulary group it sits under, if any
+}
+
+// SortedKeys are the keys of a list of definitions, sorted, once each.
+func SortedKeys(defs []Def) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, d := range defs {
+		if !seen[d.Key] {
+			seen[d.Key] = true
+			out = append(out, d.Key)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Meaning is a definition: a one-line string, or a mapping with `means:` and an
@@ -135,12 +150,12 @@ func (s *Schema) bind(f *Field, where string) error {
 		if len(f.Definitions.Keys) > 0 {
 			return errf("%s: field `%s` has both `definitions:` and `vocabulary:`. Keep one list.", where, f.Name)
 		}
-		defs, ok := s.Vocabularies[f.Vocabulary]
+		v, ok := s.Vocabularies[f.Vocabulary]
 		if !ok {
 			return errf("%s: field `%s` names vocabulary `%s`, and vocabularies/%s.yaml does not exist.",
 				where, f.Name, f.Vocabulary, f.Vocabulary)
 		}
-		f.defs = defs
+		f.defs = v.Defs
 	}
 	for i, k := range f.Definitions.Keys {
 		f.defs = append(f.defs, Def{Key: k, Means: f.Definitions.Vals[i].Means, Not: f.Definitions.Vals[i].Not})

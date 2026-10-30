@@ -27,20 +27,53 @@ Audit the backlog with "taxidermist check".`, stderr)
 	if _, err := parse(fs, args); err != nil {
 		return flagExit(err)
 	}
+	staged, taxChanged, ok := stagedFiles(*tax, stderr)
+	if !ok {
+		return 2
+	}
+	if !taxChanged && len(staged) == 0 {
+		return 0
+	}
+	s, ok := load(*tax, stderr)
+	if !ok {
+		return 2
+	}
+	// A vocabulary read with `from:` is rendered from its data file, so a change to
+	// that file can leave format/ stale without touching the taxonomy.
+	for _, v := range s.Vocabularies {
+		if v.Source != nil {
+			taxChanged = taxChanged || slices.Contains(staged, filepath.Join(s.Base, filepath.FromSlash(v.Source.From)))
+		}
+	}
+	code := 0
+	if taxChanged {
+		code = max(code, pagesGate(s, *tax, stderr))
+	}
+	if len(staged) > 0 {
+		c := filesGate(s, staged, stderr)
+		if c == 2 {
+			return 2
+		}
+		code = max(code, c)
+	}
+	return code
+}
+
+// stagedFiles lists the staged markdown and YAML files, absolute, and whether
+// anything under the taxonomy is staged. It reports to stderr when git fails.
+func stagedFiles(tax string, stderr io.Writer) (staged []string, taxChanged, ok bool) {
 	top, err := git("rev-parse", "--show-toplevel")
 	if err != nil {
 		fmt.Fprintln(stderr, "taxidermist hook: not inside a git work tree:", err)
-		return 2
+		return nil, false, false
 	}
 	top = strings.TrimSpace(top)
 	out, err := git("diff", "--cached", "--name-only", "--diff-filter=ACMRD", "-z")
 	if err != nil {
 		fmt.Fprintln(stderr, "taxidermist hook:", err)
-		return 2
+		return nil, false, false
 	}
-	taxAbs, _ := filepath.Abs(*tax)
-	var staged []string
-	taxChanged := false
+	taxAbs, _ := filepath.Abs(tax)
 	for _, name := range strings.Split(out, "\x00") {
 		if name == "" {
 			continue
@@ -53,47 +86,41 @@ Audit the backlog with "taxidermist check".`, stderr)
 			staged = append(staged, p)
 		}
 	}
-	if !taxChanged && len(staged) == 0 {
+	return staged, taxChanged, true
+}
+
+// pagesGate blocks the commit when format/ is stale.
+func pagesGate(s *schema.Schema, tax string, stderr io.Writer) int {
+	if docsSync(s, true, io.Discard, stderr) == 0 {
 		return 0
 	}
-	s, ok := load(*tax, stderr)
-	if !ok {
+	fmt.Fprintf(stderr, "\ncommit blocked: %s/format/ is stale vs the schema.\n"+
+		"  -> taxidermist docs --taxonomy %s   then re-stage, or   git commit --no-verify\n\n",
+		schema.Display(s.Dir), tax)
+	return 1
+}
+
+// filesGate blocks the commit when a staged file breaks the schema. Its warnings
+// print last and never block.
+func filesGate(s *schema.Schema, staged []string, stderr io.Writer) int {
+	paths, err := check.Files(s, staged)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	// A vocabulary read with `from:` is rendered from its data file, so a change to
-	// that file can leave format/ stale without touching the taxonomy.
-	for _, src := range s.Sources {
-		taxChanged = taxChanged || slices.Contains(staged, filepath.Join(s.Base, filepath.FromSlash(src.From)))
+	r := check.New(s).Run(paths)
+	defer writeWarnings(stderr, s, r, false)
+	if len(r.Faults) == 0 {
+		return 0
 	}
-	code := 0
-	if taxChanged {
-		if docsSync(s, true, io.Discard, stderr) != 0 {
-			fmt.Fprintf(stderr, "\ncommit blocked: %s/format/ is stale vs the schema.\n"+
-				"  -> taxidermist docs --taxonomy %s   then re-stage, or   git commit --no-verify\n\n",
-				schema.Display(s.Dir), *tax)
-			code = 1
-		}
-	}
-	if len(staged) > 0 {
-		paths, err := check.Files(s, staged)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 2
-		}
-		r := check.New(s).Run(paths)
-		defer writeWarnings(stderr, s, r, false)
-		if len(r.Faults) > 0 {
-			writeText(io.Discard, stderr, s, r, false)
-			fmt.Fprintf(stderr, "\ncommit blocked: staged files do not match the schema in %s/.\n"+
-				"  -> [value] reuse a listed value, or add the new one with its one-line definition in this commit\n"+
-				"  -> [missing/unknown] the doctype's field set is required/optional in its types/ file\n"+
-				"  -> [type/shape] the field's declared type is its `value:`\n"+
-				"  -> [segment] move the file under a folder the vocabulary defines, or define the folder's name\n"+
-				"  -> or   git commit --no-verify\n", schema.Display(s.Dir))
-			code = 1
-		}
-	}
-	return code
+	writeText(io.Discard, stderr, s, r, false)
+	fmt.Fprintf(stderr, "\ncommit blocked: staged files do not match the schema in %s/.\n"+
+		"  -> [value] reuse a listed value, or add the new one with its one-line definition in this commit\n"+
+		"  -> [missing/unknown] the doctype's field set is required/optional in its types/ file\n"+
+		"  -> [type/shape] the field's declared type is its `value:`\n"+
+		"  -> [segment] move the file under a folder the vocabulary defines, or define the folder's name\n"+
+		"  -> or   git commit --no-verify\n", schema.Display(s.Dir))
+	return 1
 }
 
 func git(args ...string) (string, error) {

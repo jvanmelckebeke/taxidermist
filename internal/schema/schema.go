@@ -23,11 +23,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-type Trait struct {
-	Name   string
-	Fields []*Field
-}
-
 type Schema struct {
 	Dir          string // the taxonomy directory
 	Base         string // its parent: roots, references and exemptions resolve against it
@@ -38,8 +33,7 @@ type Schema struct {
 	Types        map[string]*Type
 	Traits       []*Trait
 	Singletons   []*Field
-	Vocabularies map[string][]Def
-	Sources      map[string]Source // a vocabulary read from a data file -> where
+	Vocabularies map[string]*Vocabulary
 	Exempt       []Exemption
 	Owners       map[string]map[string]bool // field -> doctypes that declare it
 }
@@ -60,15 +54,6 @@ func (s *Schema) Doctypes() []string {
 	return out
 }
 
-func (s *Schema) Trait(name string) *Trait {
-	for _, t := range s.Traits {
-		if t.Name == name {
-			return t
-		}
-	}
-	return nil
-}
-
 // Error is a fault in the schema itself; nothing can be checked until it is fixed.
 type Error struct{ Msg string }
 
@@ -87,105 +72,28 @@ func Load(dir string) (*Schema, error) {
 	}
 	s := &Schema{
 		Dir: abs, Base: filepath.Dir(abs),
-		Types: map[string]*Type{}, Vocabularies: map[string][]Def{}, Sources: map[string]Source{},
+		Types: map[string]*Type{}, Vocabularies: map[string]*Vocabulary{},
 		Owners: map[string]map[string]bool{},
 	}
-
-	var scope struct {
-		Roots      []string     `yaml:"roots"`
-		Ungoverned string       `yaml:"ungoverned"`
-		Invocation string       `yaml:"invocation"`
-		Segments   []rawSegment `yaml:"segments"`
-	}
-	if err := read(abs, "scope.yaml", &scope); err != nil {
+	segments, err := s.loadScope()
+	if err != nil {
 		return nil, err
 	}
-	s.Roots, s.Ungoverned = scope.Roots, scope.Ungoverned
-	if s.Ungoverned == "" {
-		s.Ungoverned = "error"
+	// Each step may use what the steps before it loaded: segments and fields bind to
+	// vocabularies, types compose traits and singletons, and a vocabulary's source
+	// must be governed by a type.
+	steps := []func() error{
+		s.loadExempt,
+		s.loadVocabularies,
+		func() error { return s.loadSegments(segments) },
+		s.loadTraits,
+		s.loadSingletons,
+		s.loadTypes,
+		s.checkSources,
 	}
-	if s.Ungoverned != "error" && s.Ungoverned != "report" {
-		return nil, errf("scope.yaml sets `ungoverned: %s`; it takes `error` or `report`.", s.Ungoverned)
-	}
-	s.Invocation = strings.TrimSpace(scope.Invocation)
-	if s.Invocation == "" {
-		s.Invocation = "taxidermist"
-	}
-	if !strings.Contains(s.Invocation, "{command}") {
-		s.Invocation += " {command}"
-	}
-
-	var exempt struct {
-		Exempt []Exemption `yaml:"exempt"`
-	}
-	if err := read(abs, "exempt.yaml", &exempt); err != nil {
-		return nil, err
-	}
-	for i, e := range exempt.Exempt {
-		if e.Paths == "" {
-			return nil, errf("exempt.yaml entry %d has no `paths:` glob.", i+1)
-		}
-	}
-	s.Exempt = exempt.Exempt
-
-	if err := s.loadVocabularies(); err != nil {
-		return nil, err
-	}
-	for i, r := range scope.Segments {
-		seg, err := s.segment(r)
-		if err != nil {
-			return nil, errf("scope.yaml segment %d: %v", i+1, err)
-		}
-		s.Segments = append(s.Segments, seg)
-	}
-
-	var traits struct {
-		Traits Ordered[Ordered[*Field]] `yaml:"traits"`
-	}
-	if err := read(abs, "traits.yaml", &traits); err != nil {
-		return nil, err
-	}
-	for i, name := range traits.Traits.Keys {
-		t := &Trait{Name: name}
-		fs := traits.Traits.Vals[i]
-		for j, fname := range fs.Keys {
-			f := fs.Vals[j]
-			f.Name = fname
-			if err := s.bind(f, "traits.yaml"); err != nil {
-				return nil, err
-			}
-			t.Fields = append(t.Fields, f)
-		}
-		s.Traits = append(s.Traits, t)
-	}
-
-	var singles struct {
-		Fields Ordered[*Field] `yaml:"fields"`
-	}
-	if err := read(abs, "singletons.yaml", &singles); err != nil {
-		return nil, err
-	}
-	for i, name := range singles.Fields.Keys {
-		f := singles.Fields.Vals[i]
-		f.Name = name
-		if err := s.bind(f, "singletons.yaml"); err != nil {
+	for _, step := range steps {
+		if err := step(); err != nil {
 			return nil, err
-		}
-		s.Singletons = append(s.Singletons, f)
-	}
-
-	files, _ := filepath.Glob(filepath.Join(abs, "types", "*.yaml"))
-	sort.Strings(files)
-	for _, file := range files {
-		if err := s.loadType(file); err != nil {
-			return nil, err
-		}
-	}
-	for _, name := range s.VocabularyNames() {
-		src, ok := s.Sources[name]
-		if ok && len(s.TypesOf(src.From)) == 0 {
-			return nil, errf("vocabularies/%s.yaml reads from %s, which no type governs. Give it a type with "+
-				"`files:`, so the file's shape is checked before its keys become values.", name, src.From)
 		}
 	}
 	return s, nil
@@ -219,6 +127,28 @@ func (s *Schema) TypesOf(rel string) []*Type {
 	for _, dt := range s.Doctypes() {
 		if t := s.Types[dt]; t.IsYAML() && Fnmatch(rel, t.Files) {
 			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// PageDoctypes are the doctypes a markdown page's `type:` may name, sorted.
+func (s *Schema) PageDoctypes() []string {
+	var out []string
+	for _, dt := range s.Doctypes() {
+		if !s.Types[dt].IsYAML() {
+			out = append(out, dt)
+		}
+	}
+	return out
+}
+
+// Globs lists every YAML doctype's `files:`, in doctype order.
+func (s *Schema) Globs() []string {
+	var out []string
+	for _, dt := range s.Doctypes() {
+		if t := s.Types[dt]; t.IsYAML() {
+			out = append(out, t.Files)
 		}
 	}
 	return out
