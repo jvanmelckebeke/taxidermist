@@ -15,8 +15,8 @@ import (
 // never needs its own copy of the root list: a hook hands over every staged file and
 // scope.yaml alone decides which of them the schema governs.
 //
-// A markdown file is always a candidate. A YAML file is one once some doctype has
-// `files:`, unless it sits in the taxonomy directory, which describes the schema.
+// A markdown file is a candidate, and a YAML file is one once some doctype has
+// `files:`, unless it sits in the taxonomy directory.
 func Files(s *schema.Schema, args []string) ([]string, error) {
 	roots, err := s.GovernedRoots()
 	if err != nil {
@@ -102,12 +102,13 @@ func Governed(s *schema.Schema, path string) (string, error) {
 }
 
 // candidate is true for a file the check reads: markdown, or YAML once a doctype
-// governs YAML and the file is not part of the taxonomy itself.
+// governs YAML. Nothing in the taxonomy directory is a candidate; it describes the
+// schema, and format/ is generated.
 func candidate(s *schema.Schema, p string) bool {
-	if strings.HasSuffix(p, ".md") {
-		return true
+	if under(p, []string{s.Dir}) {
+		return false
 	}
-	return schema.IsYAMLPath(p) && s.HasYAML() && !under(p, []string{s.Dir})
+	return strings.HasSuffix(p, ".md") || (schema.IsYAMLPath(p) && s.HasYAML())
 }
 
 func under(p string, roots []string) bool {

@@ -74,10 +74,13 @@ func globDir(glob string) string {
 	return strings.Join(fixed, "/")
 }
 
+// underRoot is true when dir, relative to the taxonomy's parent, is a governed root
+// or lies under one. Paths compare resolved, so a root of `.` holds everything.
 func underRoot(s *schema.Schema, dir string) bool {
+	d := filepath.Join(s.Base, filepath.FromSlash(dir))
 	for _, r := range s.Roots {
-		r = filepath.ToSlash(filepath.Clean(r))
-		if dir == r || strings.HasPrefix(dir, r+"/") {
+		r = filepath.Join(s.Base, r)
+		if d == r || strings.HasPrefix(d, r+string(filepath.Separator)) {
 			return true
 		}
 	}

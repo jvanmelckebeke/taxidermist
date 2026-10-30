@@ -28,7 +28,7 @@ func TestPageContent(t *testing.T) {
 		"meeting":      {"  - what: <str>", "    done: <bool>   # optional", "[`people/`](../../people/)"},
 		"project-plan": {"type: Project Plan"},
 		"README": {"- [`Project Plan`](project-plan.md)", "**Frontmatter describes the document.**",
-			"- `projects/<name>`: `<name>` is a value of [`topic`](../vocabularies/topic.yaml). A file whose `topic:` names a different value gets a warning.",
+			"- `projects/<name>`: `<name>` is a value of [`topic`](vocabularies/topic.md). A file whose `topic:` names a different value gets a warning.",
 			"- `people/<name>`: `<name>` matches `^[a-z][a-z-]*$`."},
 	} {
 		for _, w := range wants {
@@ -251,5 +251,21 @@ func TestAMapOfObjectsRendersOneEntryUnderAPlaceholder(t *testing.T) {
 	want := "groups:\n  <name>:\n    meaning: <str>\n    read_by: []   # optional\n"
 	if !strings.Contains(pages["site"], want) {
 		t.Errorf("site.md lacks %q:\n%s", want, pages["site"])
+	}
+}
+
+func TestAFromVocabularySaysToAddValuesToItsDataFile(t *testing.T) {
+	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, _ := Pages(s)
+	want := "The values of [`team`](vocabularies/team.md) are the keys of [`config/teams.yaml`](../../config/teams.yaml), " +
+		"so a new one is added there, with its `purpose:`, not under [taxonomy/](../README.md)."
+	if !strings.Contains(pages["site"], want) {
+		t.Errorf("site.md lacks %q:\n%s", want, pages["site"])
+	}
+	if strings.Contains(pages["note"], "The values of") {
+		t.Error("note.md names a data file, and none of its vocabularies has one")
 	}
 }

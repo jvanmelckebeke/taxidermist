@@ -46,7 +46,7 @@ func indexPage(s *schema.Schema) (string, error) {
 			if sg.Pattern != nil {
 				line += "`<name>` matches `" + sg.Pattern.String() + "`."
 			} else {
-				line += "`<name>` is a value of [`" + sg.Vocabulary + "`](../vocabularies/" + sg.Vocabulary + ".yaml)."
+				line += "`<name>` is a value of " + vocabLink(sg.Vocabulary) + "."
 			}
 			if sg.Field != "" {
 				line += " A file whose `" + sg.Field + ":` names a different value gets a warning."

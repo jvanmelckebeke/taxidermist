@@ -46,3 +46,5 @@ Shared vocabulary [`team`](vocabularies/team.md), read from [`config/teams.yaml`
 ## Adding a value
 
 A field's `definitions` keys **are** its allowed values, so a value cannot exist until someone writes down what it means. Prefer an existing one, because a near-synonym fragments every filter. If nothing fits, add it to the right file under [taxonomy/](../README.md) with its one line, in the same change that uses it. `taxidermist check` fails otherwise.
+
+The values of [`team`](vocabularies/team.md) are the keys of [`config/teams.yaml`](../../config/teams.yaml), so a new one is added there, with its `purpose:`, not under [taxonomy/](../README.md).

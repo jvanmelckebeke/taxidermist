@@ -42,7 +42,9 @@ taxonomy/
 ```
 
 Paths in `scope.yaml`, `exempt.yaml`, `directory:`, `files:`, `from:` and
-`reference:` are relative to the taxonomy directory's parent.
+`reference:` are relative to the taxonomy directory's parent. Nothing inside the
+taxonomy directory is checked, even under a root of `.`: it holds the schema and the
+generated `format/` pages.
 
 A document's `type:` selects its schema. A type file declares that doctype's
 `required` and `optional` fields; a key in neither list is a fault. It can also
@@ -159,8 +161,7 @@ doctype, not a field, since many such files have nowhere to put a `type:` key. A
 file no glob matches is ungoverned, which `ungoverned: error` makes a fault and
 `ungoverned: report` tallies under `<yaml>`. Two globs matching one file is a fault
 in `check` and in `lint`. Until some type has `files:`, YAML files are not checked
-at all, and the taxonomy directory's own files never are. Markdown keeps choosing
-its doctype with `type:`.
+at all. Markdown keeps choosing its doctype with `type:`.
 
 `shape:` says what the file's top level is:
 

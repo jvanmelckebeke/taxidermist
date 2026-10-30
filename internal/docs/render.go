@@ -219,11 +219,31 @@ func (p *typePage) meanings() []string {
 }
 
 func (p *typePage) addingAValue() []string {
-	return []string{"## Adding a value", "",
+	L := []string{"## Adding a value", "",
 		"A field's `definitions` keys **are** its allowed values, so a value cannot exist until " +
 			"someone writes down what it means. Prefer an existing one, because a near-synonym " +
 			"fragments every filter. If nothing fits, add it to the right file under " + readmeLink(p.s) +
 			" with its one line, in the same change that uses it. `" + p.s.Command("check") + "` fails otherwise.", ""}
+	// A vocabulary read with `from:` takes new values in its data file, not the schema.
+	seen := map[string]bool{}
+	for _, name := range p.names {
+		f := p.spec(name)
+		v := p.s.Vocabularies[f.Vocabulary]
+		if v == nil || v.Source == nil || seen[f.Vocabulary] {
+			continue
+		}
+		seen[f.Vocabulary] = true
+		line := "The values of " + vocabLink(f.Vocabulary) + " are the keys of "
+		if v.Source.At != "" {
+			line += "`" + v.Source.At + "` in "
+		}
+		line += "[`" + v.Source.From + "`](../../" + v.Source.From + "), so a new one is added there"
+		if v.Source.Means != "" {
+			line += ", with its `" + v.Source.Means + ":`"
+		}
+		L = append(L, line+", not under "+readmeLink(p.s)+".", "")
+	}
+	return L
 }
 
 func matches(f *schema.Field) string {

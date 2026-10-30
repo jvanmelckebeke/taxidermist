@@ -165,7 +165,7 @@ func writeWarnings(w io.Writer, s *schema.Schema, r *check.Result, verbose bool)
 		}
 		fmt.Fprintf(w, "  %-*s  %3d file(s) say %s: %s\n", width, fo.dir, fo.n, fo.field, strings.Join(parts, ", "))
 	}
-	fmt.Fprintln(w, "  -> taxidermist check --verbose lists each file")
+	fmt.Fprintln(w, "  -> "+s.Command("check")+" --verbose lists each file")
 }
 
 func writeTOON(w io.Writer, r *check.Result) {
