@@ -3,6 +3,7 @@ package schema
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,12 +25,15 @@ type Type struct {
 	Optional     []string          `yaml:"optional"`
 	RequiredWhen []Condition       `yaml:"-"`
 	Directory    string            `yaml:"directory"` // where its pages live; `{field}` fills from the page
+	Files        string            `yaml:"files"`     // a path glob naming the YAML files of this doctype
+	Shape        string            `yaml:"shape"`     // a YAML file's top level: fields, map or list
+	Key          *Field            `yaml:"key"`       // `shape: map` only: what each top-level key must be
 	Fields       Ordered[*Field]   `yaml:"fields"`
 	Resolved     map[string]*Field `yaml:"-"` // own fields, then singletons, then traits
 }
 
 func (t *Type) UnmarshalYAML(n *yaml.Node) error {
-	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "fields"); err != nil {
+	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "files", "shape", "key", "fields"); err != nil {
 		return err
 	}
 	type plain Type
@@ -46,6 +50,12 @@ func (t *Type) UnmarshalYAML(n *yaml.Node) error {
 	}
 	return nil
 }
+
+// Shapes are the values `shape:` takes. `fields` is the default.
+var Shapes = []string{"fields", "map", "list"}
+
+// IsYAML is true for a doctype that governs plain YAML files rather than frontmatter.
+func (t *Type) IsYAML() bool { return t.Files != "" }
 
 // Declared is every field the doctype may carry.
 func (t *Type) Declared() map[string]bool {
@@ -75,6 +85,9 @@ func (s *Schema) loadType(file string) error {
 		return errf("types/%s.yaml and %s both declare `type: %s`.", other.Slug, rel, t.Doctype)
 	}
 	if err := t.checkDirectory(rel); err != nil {
+		return err
+	}
+	if err := s.checkFiles(t, rel); err != nil {
 		return err
 	}
 	for i, name := range t.Fields.Keys {
@@ -161,6 +174,38 @@ func (t *Type) checkDirectory(rel string) error {
 	for _, m := range Placeholder.FindAllStringSubmatch(t.Directory, -1) {
 		if !declared[m[1]] {
 			return errf("%s: `directory: %s` fills `{%s}` from a field the doctype does not declare.", rel, t.Directory, m[1])
+		}
+	}
+	return nil
+}
+
+// checkFiles validates the keys that only a YAML doctype takes.
+func (s *Schema) checkFiles(t *Type, rel string) error {
+	if !t.IsYAML() {
+		if t.Shape != "" || t.Key != nil {
+			return errf("%s: `shape:` and `key:` go with `files:`; a markdown doctype's shape is its frontmatter.", rel)
+		}
+		return nil
+	}
+	if strings.HasPrefix(t.Files, "/") || slices.Contains(strings.Split(t.Files, "/"), "..") {
+		return errf("%s: `files: %s` must be a path glob relative to %s, inside it.", rel, t.Files, Display(s.Base))
+	}
+	if t.Directory != "" {
+		return errf("%s: `directory:` places markdown pages; a YAML doctype's place is its `files:` glob.", rel)
+	}
+	if t.Shape == "" {
+		t.Shape = "fields"
+	}
+	if !slices.Contains(Shapes, t.Shape) {
+		return errf("%s: `shape: %s`; it takes %s.", rel, t.Shape, strings.Join(Shapes, ", "))
+	}
+	if t.Key != nil {
+		if t.Shape != "map" {
+			return errf("%s: `key:` describes the entry names of `shape: map`, and this type is `shape: %s`.", rel, t.Shape)
+		}
+		t.Key.Name = "key"
+		if err := s.bind(t.Key, rel); err != nil {
+			return err
 		}
 	}
 	return nil

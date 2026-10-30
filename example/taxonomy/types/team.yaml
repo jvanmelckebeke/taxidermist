@@ -1,0 +1,23 @@
+# `shape: map`: every top-level key is a team, and its value takes the field set.
+files: config/teams.yaml
+shape: map
+key:
+  pattern: '^[a-z][a-z-]*$'
+  guidance: The team's short name, lowercase with dashes.
+required:
+- purpose
+- lead
+optional:
+- topics
+fields:
+  purpose:
+    value: str
+    guidance: What the team is for, in one line.
+  lead:
+    value: str
+    reference: people
+    guidance: The person page slug of whoever leads it.
+  topics:
+    value: list
+    vocabulary: topic
+    guidance: The topics the team owns.

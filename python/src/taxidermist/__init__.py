@@ -1,4 +1,4 @@
-"""Check markdown frontmatter against a taxonomy directory.
+"""Check markdown frontmatter, and plain YAML files, against a taxonomy directory.
 
 This package runs the taxidermist binary with ``check --json`` and returns its
 output as dataclasses. It finds the binary in ``$TAXIDERMIST_BIN``, then on PATH.
@@ -103,9 +103,9 @@ def _check_version(path: str) -> None:
 
 
 def validate(*paths: str | os.PathLike[str], taxonomy: str | os.PathLike[str] = "taxonomy") -> Result:
-    """Check markdown files on disk, as ``taxidermist check FILE...`` does.
+    """Check markdown and YAML files on disk, as ``taxidermist check FILE...`` does.
 
-    With no paths it checks every governed root. A path that is not markdown,
+    With no paths it checks every governed root. A path that is not markdown or YAML,
     does not exist, or sits outside the roots in scope.yaml is skipped.
     """
     return _run(["--", *(os.fspath(p) for p in paths)], taxonomy, None)
@@ -114,10 +114,11 @@ def validate(*paths: str | os.PathLike[str], taxonomy: str | os.PathLike[str] = 
 def validate_content(
     content: str | bytes, path: str | os.PathLike[str], *, taxonomy: str | os.PathLike[str] = "taxonomy"
 ) -> Result:
-    """Check ``content`` as if it were the markdown file at ``path``.
+    """Check ``content`` as if it were the markdown or YAML file at ``path``.
 
-    The file need not exist, but ``path`` must sit under a governed root: it
-    decides the folder rules, the exemptions and the slug the page must not share.
+    The file need not exist, but ``path`` must sit under a governed root: it picks
+    a YAML file's doctype, and decides the folder rules, the exemptions and the slug
+    a page must not share.
     """
     data = content.encode() if isinstance(content, str) else content
     return _run(["--stdin-filename", os.fspath(path)], taxonomy, data)

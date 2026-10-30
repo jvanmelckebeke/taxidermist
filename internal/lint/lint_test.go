@@ -88,6 +88,12 @@ func TestEachRuleFires(t *testing.T) {
 			// tags is on every doctype through core, topic only on note and Project Plan.
 			replaceIn(t, filepath.Join(tax, "traits.yaml"), "      value: list\n      guidance: Free-text", "      value: list\n      excludes: topic\n      guidance: Free-text")
 		},
+		"files-under-root": func(tax string) {
+			replaceIn(t, filepath.Join(tax, "types", "site.yaml"), "files: config/site.yaml", "files: elsewhere/site.yaml")
+		},
+		"files-one-type": func(tax string) {
+			replaceIn(t, filepath.Join(tax, "types", "site.yaml"), "files: config/site.yaml", "files: config/*.yaml")
+		},
 		"guidance": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "types", "person.yaml"), "    guidance: How you know them.\n", "")
 		},

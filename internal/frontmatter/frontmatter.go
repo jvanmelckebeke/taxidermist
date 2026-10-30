@@ -60,7 +60,11 @@ func Parse(block string) (*Doc, error) {
 	if len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode {
 		return nil, nil
 	}
-	m := root.Content[0]
+	return FromNode(root.Content[0])
+}
+
+// FromNode reads a mapping node as a Doc, keeping its key order.
+func FromNode(m *yaml.Node) (*Doc, error) {
 	d := &Doc{}
 	if err := m.Decode(&d.Fields); err != nil {
 		return nil, err

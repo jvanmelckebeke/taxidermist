@@ -32,6 +32,20 @@ func TestLoadErrors(t *testing.T) {
 		{"typo in a type file", "types/x.yaml", "requried: [type]\n", "unknown key `requried`"},
 		{"directory placeholder undeclared", "types/x.yaml", "required: [type]\ndirectory: x/{kind}\n", "fills `{kind}` from a field the doctype does not declare"},
 		{"directory with a wildcard", "types/x.yaml", "required: [type]\ndirectory: x/*\n", "no wildcard"},
+		{"shape without files", "types/x.yaml", "shape: map\n", "go with `files:`"},
+		{"unknown shape", "types/x.yaml", "files: config/x.yaml\nshape: tree\n", "it takes fields, map, list"},
+		{"key off a map", "types/x.yaml", "files: config/x.yaml\nkey: {pattern: x}\n", "`shape: fields`"},
+		{"files outside the repo", "types/x.yaml", "files: ../x.yaml\n", "inside it"},
+		{"files with a directory", "types/x.yaml", "files: config/x.yaml\ndirectory: config\n", "`directory:` places markdown pages"},
+		{"bad pattern", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, pattern: '('}\n", "does not compile"},
+		{"values off a map", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: object, values: {value: str}}\n", "go with `value: map`"},
+		{"values and schema", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: map, values: {value: str}, schema: {a: {value: str}}}\n", "both `values:` and `schema:`"},
+		{"from and definitions", "vocabularies/team.yaml", "from: config/teams.yaml\ndefinitions: {a: b}\n", "both `from:` and `definitions:`"},
+		{"from a missing file", "vocabularies/team.yaml", "from: config/nope.yaml\n", "does not exist"},
+		{"from outside the repo", "vocabularies/team.yaml", "from: ../teams.yaml\n", "a file in this repo"},
+		{"from a file no type governs", "vocabularies/team.yaml", "from: people/alice.md\n", "which no type governs"},
+		{"at without from", "vocabularies/v.yaml", "at: x\ndefinitions: {a: b}\n", "go with `from:`"},
+		{"at naming no mapping", "vocabularies/team.yaml", "from: config/teams.yaml\nat: platform.lead\n", "holds no mapping there"},
 	}
 	for _, c := range cases {
 		err := loadWith(t, c.rel, c.body)
@@ -148,5 +162,23 @@ func TestADirectoryPlaceholderMayNameARequiredWhenField(t *testing.T) {
 	body := "required: [type, course]\nrequired_when:\n  kind:\n    course: main\ndirectory: x/{kind}\n"
 	if err := loadWith(t, "types/x.yaml", body); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestAVocabularyReadsItsValuesFromADataFile(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	testutil.Write(t, dir, "config/site.yaml", "name: n\ntimezone: Europe/Brussels\ntopics:\n  a: {meaning: The first.}\n  b: {}\n")
+	tax := filepath.Join(dir, "taxonomy")
+	testutil.Write(t, tax, "vocabularies/listed.yaml", "from: config/site.yaml\nat: topics\nmeans: meaning\n")
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.Vocabularies["listed"]
+	if len(got) != 2 || got[0] != (schema.Def{Key: "a", Means: "The first."}) || got[1] != (schema.Def{Key: "b"}) {
+		t.Errorf("defs = %+v", got)
+	}
+	if got := s.Vocabularies["team"]; len(got) != 2 || got[1].Key != "platform" || got[1].Means != "Keeps the servers and the build running." {
+		t.Errorf("team = %+v", got)
 	}
 }

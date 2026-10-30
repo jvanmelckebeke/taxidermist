@@ -39,6 +39,7 @@ type Schema struct {
 	Traits       []*Trait
 	Singletons   []*Field
 	Vocabularies map[string][]Def
+	Sources      map[string]Source // a vocabulary read from a data file -> where
 	Exempt       []Exemption
 	Owners       map[string]map[string]bool // field -> doctypes that declare it
 }
@@ -86,7 +87,7 @@ func Load(dir string) (*Schema, error) {
 	}
 	s := &Schema{
 		Dir: abs, Base: filepath.Dir(abs),
-		Types: map[string]*Type{}, Vocabularies: map[string][]Def{},
+		Types: map[string]*Type{}, Vocabularies: map[string][]Def{}, Sources: map[string]Source{},
 		Owners: map[string]map[string]bool{},
 	}
 
@@ -180,7 +181,52 @@ func Load(dir string) (*Schema, error) {
 			return nil, err
 		}
 	}
+	for _, name := range s.VocabularyNames() {
+		src, ok := s.Sources[name]
+		if ok && len(s.TypesOf(src.From)) == 0 {
+			return nil, errf("vocabularies/%s.yaml reads from %s, which no type governs. Give it a type with "+
+				"`files:`, so the file's shape is checked before its keys become values.", name, src.From)
+		}
+	}
 	return s, nil
+}
+
+// VocabularyNames returns the vocabulary names, sorted.
+func (s *Schema) VocabularyNames() []string {
+	out := make([]string, 0, len(s.Vocabularies))
+	for v := range s.Vocabularies {
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// HasYAML is true when some doctype governs YAML files. Until one does, a YAML file
+// under a governed root is not taxidermist's business.
+func (s *Schema) HasYAML() bool {
+	for _, t := range s.Types {
+		if t.IsYAML() {
+			return true
+		}
+	}
+	return false
+}
+
+// TypesOf returns the doctypes whose `files:` glob matches rel, a slash path relative
+// to Base, sorted by doctype.
+func (s *Schema) TypesOf(rel string) []*Type {
+	var out []*Type
+	for _, dt := range s.Doctypes() {
+		if t := s.Types[dt]; t.IsYAML() && Fnmatch(rel, t.Files) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// IsYAMLPath is true for a .yaml or .yml path.
+func IsYAMLPath(p string) bool {
+	return strings.HasSuffix(p, ".yaml") || strings.HasSuffix(p, ".yml")
 }
 
 // read decodes one schema file. A missing file is empty.

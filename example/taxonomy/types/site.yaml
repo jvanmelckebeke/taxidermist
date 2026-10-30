@@ -1,0 +1,28 @@
+# A plain YAML file: `files:` names it, and its top-level mapping is the field set.
+files: config/site.yaml
+required:
+- name
+- timezone
+optional:
+- default_team
+- labels
+fields:
+  name:
+    value: str
+    guidance: The name the knowledge base goes by.
+  timezone:
+    value: str
+    pattern: '^[A-Z][A-Za-z_]+/[A-Za-z_]+$'
+    guidance: An IANA zone. Dates in the pages are local to it.
+  default_team:
+    value: str
+    vocabulary: team
+    guidance: The team a page with no owner falls to.
+  labels:
+    value: map
+    key:
+      pattern: '^[a-z]+$'
+    values:
+      value: str
+      guidance: What the label marks.
+    guidance: Labels a page may carry, each with what it marks.

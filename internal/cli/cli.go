@@ -17,13 +17,13 @@ import (
 // Version is set at build time.
 var Version = "dev"
 
-const usage = `taxidermist: keep markdown frontmatter to a declared schema.
+const usage = `taxidermist: keep markdown frontmatter and YAML files to a declared schema.
 
 The schema is a taxonomy directory (default ./taxonomy): scope.yaml, traits.yaml,
 singletons.yaml, exempt.yaml, vocabularies/ and one types/<doctype>.yaml per doctype.
 
 Usage:
-  taxidermist check [FILE ...]   check frontmatter against the schema (default: every governed root)
+  taxidermist check [FILE ...]   check frontmatter and YAML files against the schema (default: every governed root)
   taxidermist docs [--check]     generate taxonomy/format/, one how-to page per doctype
   taxidermist lint               check the schema against its own invariants
   taxidermist hook               the pre-commit gate: docs --check and check, on staged files
@@ -111,7 +111,8 @@ func runDocs(args []string, stdout, stderr io.Writer) int {
 	fs, tax := newFlags("docs", `taxidermist docs [--check]
 
 Generate <taxonomy>/format/: one page per doctype with a fill-in template, every
-field's guidance and every vocabulary it uses, plus a README index. The index opens
+field's guidance and every vocabulary it uses, one page per vocabulary under
+vocabularies/, plus a README index. The index opens
 with <taxonomy>/`+docs.HouseRules+` when that file exists. Pages no doctype generates
 are deleted.`, stderr)
 	chk := fs.Bool("check", false, "exit 1 if any page is stale; write nothing")

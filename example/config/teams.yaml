@@ -1,0 +1,8 @@
+hiring-panel:
+  purpose: Runs interviews and decides on offers.
+  lead: alice
+  topics: [hiring]
+platform:
+  purpose: Keeps the servers and the build running.
+  lead: bob
+  topics: [infra]

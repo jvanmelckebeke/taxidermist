@@ -9,6 +9,21 @@ Each page resolves one `type:`: its obligations, a fill-in template, what to put
 - [`note`](note.md)
 - [`person`](person.md)
 
+## YAML files
+
+A YAML file under a governed root takes the doctype whose `files:` glob matches its path. Each page resolves one glob.
+
+- [`config/rota.yaml`](rota-week.md)
+- [`config/site.yaml`](site.md)
+- [`config/teams.yaml`](team.md)
+
+## Vocabularies
+
+Every shared value list, on a page of its own.
+
+- [`team`](vocabularies/team.md)
+- [`topic`](vocabularies/topic.md)
+
 ## Folders
 
 A folder name directly under these directories, or the filename of a page sitting directly there, must be an allowed value. `index.md` and `README.md` there describe the directory itself.

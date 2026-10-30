@@ -33,21 +33,11 @@ func render(s *schema.Schema, t *schema.Type) string {
 		}
 		return &schema.Field{Name: name}
 	}
-	vals := func(f *schema.Field) []string {
-		seen := map[string]bool{}
-		var out []string
-		for _, d := range f.Enum() {
-			k := d.Key
-			if !seen[k] {
-				seen[k] = true
-				out = append(out, k)
-			}
-		}
-		sort.Strings(out)
-		return out
-	}
 
 	L := []string{"# Frontmatter for `type: " + t.Doctype + "`", "", banner(s), ""}
+	if t.IsYAML() {
+		L[0] = "# Format of `" + t.Files + "`"
+	}
 	if len(t.Traits) > 0 {
 		quoted := make([]string, len(t.Traits))
 		for i, tr := range t.Traits {
@@ -55,43 +45,55 @@ func render(s *schema.Schema, t *schema.Type) string {
 		}
 		L = append(L, "Composes "+joinAnd(quoted)+", the field bundles in [../traits.yaml](../traits.yaml).", "")
 	}
+	switch t.Shape {
+	case "map":
+		line := "One entry per top-level key, each with the fields below."
+		if t.Key != nil {
+			if rule := keyRule(t.Key); rule != "" {
+				line += " The key " + rule + "."
+			}
+			if t.Key.Guidance != "" {
+				line += " " + t.Key.Guidance
+			}
+		}
+		L = append(L, line, "")
+	case "list":
+		L = append(L, "A list, one item per entry, each with the fields below.", "")
+	}
 
-	L = append(L, "## Copy this", "", "```yaml", "---")
+	var body []string
 	for _, name := range names {
-		f, v := spec(name), vals(spec(name))
+		if name == "type" && !t.IsYAML() {
+			body = append(body, "type: "+t.Doctype)
+			continue
+		}
 		tail := ""
 		if !required[name] {
 			tail = "   # optional"
 		}
-		sub := nested(f)
-		switch {
-		case name == "type":
-			L = append(L, "type: "+t.Doctype)
-		case len(sub) > 0 && f.Value == "object":
-			L = append(L, name+":"+tail)
-			for _, k := range sub {
-				L = append(L, "  "+k.Name+": <"+k.Value+">"+optMark(k))
-			}
-		case len(sub) > 0:
-			L = append(L, name+":"+tail)
-			for i, k := range sub {
-				lead := "    "
-				if i == 0 {
-					lead = "  - "
-				}
-				L = append(L, lead+k.Name+": <"+k.Value+">"+optMark(k))
-			}
-		case len(v) > 0 && f.Value == "list":
-			L = append(L, name+": [<"+strings.Join(v, " | ")+">]"+tail)
-		case len(v) > 0:
-			L = append(L, name+": <"+strings.Join(v, " | ")+">"+tail)
-		case f.Value == "list":
-			L = append(L, name+": []"+tail)
-		default:
-			L = append(L, name+": <"+valueType(f)+">"+tail)
-		}
+		body = append(body, template(name, spec(name), tail, "")...)
 	}
-	L = append(L, "---", "```", "")
+	L = append(L, "## Copy this", "", "```yaml")
+	switch {
+	case !t.IsYAML():
+		L = append(append(append(L, "---"), body...), "---")
+	case t.Shape == "map":
+		L = append(L, "<name>:")
+		for _, b := range body {
+			L = append(L, "  "+b)
+		}
+	case t.Shape == "list":
+		for i, b := range body {
+			lead := "  "
+			if i == 0 {
+				lead = "- "
+			}
+			L = append(L, lead+b)
+		}
+	default:
+		L = append(L, body...)
+	}
+	L = append(L, "```", "")
 
 	for _, c := range t.RequiredWhen {
 		var parts []string
@@ -107,12 +109,13 @@ func render(s *schema.Schema, t *schema.Type) string {
 
 	L = append(L, "## What to put in each field", "")
 	for _, name := range names {
-		f, v := spec(name), vals(spec(name))
+		f := spec(name)
+		v := enumKeys(f)
 		req := "optional"
 		if required[name] {
 			req = "required"
 		}
-		L = append(L, "**`"+name+"`** · "+req+" · `"+valueType(f)+"`  ")
+		L = append(L, "**`"+name+"`** · "+req+" · `"+valueType(f)+"`"+matches(f)+"  ")
 		if f.Guidance != "" {
 			L = append(L, f.Guidance)
 		} else {
@@ -121,29 +124,25 @@ func render(s *schema.Schema, t *schema.Type) string {
 		if f.Excludes != "" {
 			L = append(L, "", "Never repeats `"+f.Excludes+"`. Checked.")
 		}
-		if sub := nested(f); len(sub) > 0 {
+		if f.Key != nil {
+			if rule := keyRule(f.Key); rule != "" {
+				L = append(L, "", "Each key "+rule+".")
+			}
+		}
+		if sub := nested(f); len(sub) > 0 || f.Values != nil {
 			L = append(L, "")
+			if f.Values != nil {
+				L = append(L, subKey("each value", f.Values, "")...)
+			}
 			for _, k := range sub {
 				kreq := "optional"
 				if k.Required {
 					kreq = "required"
 				}
-				line := "- `" + k.Name + "` · " + kreq + " · `" + k.Value + "`"
-				if k.Guidance != "" {
-					line += ": " + k.Guidance
-				}
-				if k.Reference != "" {
-					line += " Any " + refTarget(k.Reference) + ", checked."
-				}
-				L = append(L, line)
-				for _, d := range k.Enum() {
-					line := "  - `" + d.Key + "`: " + d.Means
-					if d.Not != "" {
-						line += " Not for: " + d.Not
-					}
-					L = append(L, line)
-				}
+				L = append(L, subKey("`"+k.Name+"`", k, kreq)...)
 			}
+		} else if schema.IsYAMLPath(f.Reference) {
+			L = append(L, "", "Values: any "+refTarget(f.Reference)+". Checked, so a name that is not one is a fault.")
 		} else if f.Reference != "" {
 			by := "by its filename without `.md`"
 			if strings.HasSuffix(f.Reference, "/*") {
@@ -168,8 +167,7 @@ func render(s *schema.Schema, t *schema.Type) string {
 	wrote := false
 	for _, name := range names {
 		f := spec(name)
-		v, enum := vals(f), f.Enum()
-		if len(v) == 0 || !hasMeanings(enum) {
+		if len(enumKeys(f)) == 0 || !hasMeanings(f.Enum()) {
 			continue
 		}
 		if !wrote {
@@ -177,38 +175,12 @@ func render(s *schema.Schema, t *schema.Type) string {
 			wrote = true
 		}
 		L = append(L, "### `"+name+"`", "")
-		grouped := false
-		if f.Vocabulary != "" {
+		if src, ok := s.Sources[f.Vocabulary]; ok {
+			L = append(L, "Shared vocabulary "+vocabLink(f.Vocabulary)+", read from [`"+src.From+"`](../../"+src.From+").", "")
+		} else if f.Vocabulary != "" {
 			L = append(L, "Shared vocabulary from [../vocabularies/"+f.Vocabulary+".yaml](../vocabularies/"+f.Vocabulary+".yaml).", "")
-			for _, d := range enum {
-				grouped = grouped || d.Group != ""
-			}
 		}
-		nots := false
-		for _, d := range enum {
-			nots = nots || d.Not != ""
-		}
-		head, rule := "| value |", "|---|"
-		if grouped {
-			head, rule = head+" group |", rule+"---|"
-		}
-		head, rule = head+" means |", rule+"---|"
-		if nots {
-			head, rule = head+" not for |", rule+"---|"
-		}
-		L = append(L, head, rule)
-		for _, x := range v {
-			d := lookup(enum, x)
-			row := "| `" + x + "` |"
-			if grouped {
-				row += " " + d.Group + " |"
-			}
-			row += " " + cell(d.Means) + " |"
-			if nots {
-				row += " " + cell(d.Not) + " |"
-			}
-			L = append(L, row)
-		}
+		L = append(L, valuesTable(f.Enum(), f.Vocabulary != "")...)
 		L = append(L, "")
 	}
 
@@ -218,6 +190,158 @@ func render(s *schema.Schema, t *schema.Type) string {
 			"fragments every filter. If nothing fits, add it to the right file under "+readmeLink(s)+
 			" with its one line, in the same change that uses it. `"+s.Command("check")+"` fails otherwise.", "")
 	return strings.Join(L, "\n")
+}
+
+// template is a field's lines in the "Copy this" block, at the given indent, with
+// every nested key, map value and list item below it.
+func template(name string, f *schema.Field, tail, in string) []string {
+	sub := nested(f)
+	switch {
+	case f.Value == "map":
+		out := []string{in + name + ":" + tail}
+		if f.Values != nil {
+			return append(out, template("<name>", f.Values, "", in+"  ")...)
+		}
+		out = append(out, in+"  <name>:")
+		for _, k := range sub {
+			out = append(out, template(k.Name, k, optMark(k), in+"    ")...)
+		}
+		return out
+	case len(sub) > 0 && f.Value == "object":
+		out := []string{in + name + ":" + tail}
+		for _, k := range sub {
+			out = append(out, template(k.Name, k, optMark(k), in+"  ")...)
+		}
+		return out
+	case len(sub) > 0:
+		out := []string{in + name + ":" + tail}
+		for i, k := range sub {
+			lines := template(k.Name, k, optMark(k), in+"    ")
+			if i == 0 {
+				lines[0] = in + "  - " + strings.TrimPrefix(lines[0], in+"    ")
+			}
+			out = append(out, lines...)
+		}
+		return out
+	}
+	v := enumKeys(f)
+	switch {
+	case len(v) > 0 && f.Value == "list":
+		return []string{in + name + ": [<" + strings.Join(v, " | ") + ">]" + tail}
+	case len(v) > 0:
+		return []string{in + name + ": <" + strings.Join(v, " | ") + ">" + tail}
+	case f.Value == "list":
+		return []string{in + name + ": []" + tail}
+	}
+	return []string{in + name + ": <" + valueType(f) + ">" + tail}
+}
+
+// subKey describes a nested key, or a map's values, as a list item with its allowed
+// values below it.
+func subKey(name string, k *schema.Field, req string) []string {
+	line := "- " + name
+	if req != "" {
+		line += " · " + req
+	}
+	line += " · `" + valueType(k) + "`" + matches(k)
+	if k.Guidance != "" {
+		line += ": " + k.Guidance
+	}
+	if k.Reference != "" {
+		line += " Any " + refTarget(k.Reference) + ", checked."
+	}
+	out := []string{line}
+	for _, d := range k.Enum() {
+		line := "  - `" + d.Key + "`: " + d.Means
+		if d.Not != "" {
+			line += " Not for: " + d.Not
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// enumKeys is a field's allowed values, sorted, once each.
+func enumKeys(f *schema.Field) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, d := range f.Enum() {
+		if !seen[d.Key] {
+			seen[d.Key] = true
+			out = append(out, d.Key)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func matches(f *schema.Field) string {
+	if f.Pattern == "" {
+		return ""
+	}
+	return " · matches `" + f.Pattern + "`"
+}
+
+// keyRule says what a map's key must be, as a predicate: "matches `^x$`".
+func keyRule(k *schema.Field) string {
+	var parts []string
+	if k.Pattern != "" {
+		parts = append(parts, "matches `"+k.Pattern+"`")
+	}
+	if k.Vocabulary != "" {
+		parts = append(parts, "is a value of "+vocabLink(k.Vocabulary))
+	} else if v := enumKeys(k); len(v) > 0 {
+		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
+	}
+	if k.Reference != "" {
+		parts = append(parts, "is a "+refTarget(k.Reference))
+	}
+	return joinAnd(parts)
+}
+
+// vocabLink links a vocabulary's own page from a page in format/.
+func vocabLink(name string) string {
+	return "[`" + name + "`](vocabularies/" + name + ".md)"
+}
+
+// valuesTable is the table of a field's or a vocabulary's values and what each means.
+func valuesTable(enum []schema.Def, groups bool) []string {
+	grouped, nots := false, false
+	for _, d := range enum {
+		grouped = grouped || (groups && d.Group != "")
+		nots = nots || d.Not != ""
+	}
+	head, rule := "| value |", "|---|"
+	if grouped {
+		head, rule = head+" group |", rule+"---|"
+	}
+	head, rule = head+" means |", rule+"---|"
+	if nots {
+		head, rule = head+" not for |", rule+"---|"
+	}
+	L := []string{head, rule}
+	seen := map[string]bool{}
+	var keys []string
+	for _, d := range enum {
+		if !seen[d.Key] {
+			seen[d.Key] = true
+			keys = append(keys, d.Key)
+		}
+	}
+	sort.Strings(keys)
+	for _, x := range keys {
+		d := lookup(enum, x)
+		row := "| `" + x + "` |"
+		if grouped {
+			row += " " + d.Group + " |"
+		}
+		row += " " + cell(d.Means) + " |"
+		if nots {
+			row += " " + cell(d.Not) + " |"
+		}
+		L = append(L, row)
+	}
+	return L
 }
 
 func optMark(f *schema.Field) string {
@@ -261,9 +385,12 @@ func joinAnd(xs []string) string {
 }
 
 // refTarget names what a `reference:` resolves against, linked: the pages anywhere
-// under a directory, or for `<dir>/*`, the directories directly under it that hold
-// an index.md.
+// under a directory, for `<dir>/*` the directories directly under it that hold an
+// index.md, or the top-level keys of a YAML file.
 func refTarget(ref string) string {
+	if schema.IsYAMLPath(ref) {
+		return "top-level key of [`" + ref + "`](../../" + ref + ")"
+	}
 	if dir, ok := strings.CutSuffix(ref, "/*"); ok {
 		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`"
 	}

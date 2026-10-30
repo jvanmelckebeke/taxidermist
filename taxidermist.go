@@ -1,4 +1,5 @@
-// Package taxidermist checks markdown frontmatter against a taxonomy directory.
+// Package taxidermist checks markdown frontmatter, and plain YAML files, against a
+// taxonomy directory.
 //
 // It is the library behind the taxidermist command. `taxidermist check --json`
 // prints the Result that Validate and ValidateContent return, so a program in any
@@ -32,9 +33,10 @@ func Load(dir string) (*Taxonomy, error) {
 }
 
 // Validate checks files on disk the way `taxidermist check FILE...` does. With no
-// paths it checks every governed root. A path that is not markdown, does not exist,
-// or sits outside the roots scope.yaml governs is skipped, so a caller can pass any
-// list of files and scope.yaml decides which ones count.
+// paths it checks every governed root. A path that is not markdown or YAML, does not
+// exist, or sits outside the roots scope.yaml governs is skipped, so a caller can pass
+// any list of files and scope.yaml decides which ones count. A YAML file counts once
+// some doctype has `files:`.
 func (t *Taxonomy) Validate(paths ...string) (*Result, error) {
 	files, err := check.Files(t.s, paths)
 	if err != nil {
@@ -43,9 +45,9 @@ func (t *Taxonomy) Validate(paths ...string) (*Result, error) {
 	return newResult(check.New(t.s).Run(files)), nil
 }
 
-// ValidateContent checks content as if it were the markdown file at path, which
-// need not exist yet. The path still matters: it decides the folder rules, the
-// exemptions and the slug a page must not share. A path outside the governed roots
+// ValidateContent checks content as if it were the markdown or YAML file at path,
+// which need not exist yet. The path still matters: it picks a YAML file's doctype,
+// and decides the folder rules, the exemptions and the slug a page must not share. A path outside the governed roots
 // is an error rather than a skip, since the caller named it on purpose.
 func (t *Taxonomy) ValidateContent(path string, content []byte) (*Result, error) {
 	abs, err := check.Governed(t.s, path)
@@ -79,8 +81,10 @@ type Finding struct {
 	File string `json:"file"`
 	// Kind is the rule the file broke: one of Kinds, or "mismatch" for a warning.
 	Kind string `json:"kind"`
-	// Field is the frontmatter key, or a placeholder in angle brackets such as
-	// <frontmatter> or <slug> when the fault is not about one key.
+	// Field is the key, as a dotted path when it sits inside an entry, an item or a
+	// mapping (`bus/gate.archived`, `[2].team`, `review.open`), or a placeholder in
+	// angle brackets such as <frontmatter>, <file> or <slug> when the fault is not
+	// about one key.
 	Field string `json:"field"`
 	// Value is the offending value as YAML text, or nil when there is none, as for
 	// a missing field.

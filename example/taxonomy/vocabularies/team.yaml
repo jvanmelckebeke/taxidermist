@@ -1,0 +1,3 @@
+# The teams are declared in config/teams.yaml, so the vocabulary reads them from there.
+from: config/teams.yaml
+means: purpose
