@@ -127,18 +127,19 @@ func (s *Schema) segment(r rawSegment) (*Segment, error) {
 	return seg, nil
 }
 
-// GovernedRoots returns the absolute roots scope.yaml declares. A listed root that
-// does not exist is a fault in scope.yaml, not a reason to quietly check less: a
+// GovernedRoots returns the absolute roots scope.yaml declares. A root is a directory,
+// governed recursively, or a single file, which governs that file alone. A listed root
+// that does not exist is a fault in scope.yaml, not a reason to quietly check less: a
 // typo would otherwise drop a whole area from the gate and every commit would pass.
 func (s *Schema) GovernedRoots() ([]string, error) {
 	if len(s.Roots) == 0 {
 		return nil, errf("scope.yaml declares no roots, so nothing would be checked. "+
-			"List the directories this schema governs, relative to %s.", Display(s.Base))
+			"List the directories or files this schema governs, relative to %s.", Display(s.Base))
 	}
 	var out, missing []string
 	for _, r := range s.Roots {
 		p := filepath.Clean(filepath.Join(s.Base, r))
-		if st, err := os.Stat(p); err != nil || !st.IsDir() {
+		if _, err := os.Stat(p); err != nil {
 			missing = append(missing, r)
 			continue
 		}

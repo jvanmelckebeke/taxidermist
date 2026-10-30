@@ -25,12 +25,13 @@ func segmentRules(s *schema.Schema, add adder) {
 	}
 }
 
-// filesUnderRoot: a YAML doctype's files: glob lies under a governed root.
+// filesUnderRoot: a YAML doctype's files: glob lies under a governed root, or matches
+// a root that is a single file.
 func filesUnderRoot(s *schema.Schema, add adder) {
 	doctypes := s.Doctypes()
 	for _, dt := range doctypes {
 		t := s.Types[dt]
-		if t.IsYAML() && !underRoot(s, globDir(t.Files)) {
+		if t.IsYAML() && !underRoot(s, globDir(t.Files)) && !matchesRoot(s, t.Files) {
 			add("files-under-root", "`%s`: `files: %s` is under no root in scope.yaml, so check never reaches it", dt, t.Files)
 		}
 	}
@@ -59,6 +60,17 @@ func filesOneType(s *schema.Schema, add adder) {
 			add("files-one-type", "%s matches the files: of %s; a file has one doctype", schema.Display(p), strings.Join(names, " and "))
 		}
 	}
+}
+
+// matchesRoot is true when glob matches one of the roots, as it does a root that names
+// a single file.
+func matchesRoot(s *schema.Schema, glob string) bool {
+	for _, r := range s.Roots {
+		if schema.Fnmatch(filepath.ToSlash(filepath.Clean(r)), glob) {
+			return true
+		}
+	}
+	return false
 }
 
 // globDir is the directory part of a path glob before its first wildcard.
