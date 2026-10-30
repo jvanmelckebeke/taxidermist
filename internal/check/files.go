@@ -40,32 +40,45 @@ func Files(s *schema.Schema, args []string) ([]string, error) {
 	}
 	var out []string
 	for _, r := range roots {
-		real, err := filepath.EvalSymlinks(r)
-		if err != nil {
-			return nil, err
-		}
-		err = filepath.WalkDir(real, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil
-			}
-			rel, _ := filepath.Rel(real, p)
-			if !candidate(s, filepath.Join(r, rel)) {
-				return nil
+		found, err := walk(r, func(p string, d os.DirEntry) bool {
+			if !candidate(s, p) {
+				return false
 			}
 			if d.Type()&os.ModeSymlink != 0 {
 				if st, err := os.Stat(p); err != nil || st.IsDir() {
-					return nil
+					return false
 				}
 			}
-			out = append(out, filepath.Join(r, rel))
-			return nil
+			return true
 		})
 		if err != nil {
 			return nil, err
 		}
+		out = append(out, found...)
 	}
 	sortPaths(out)
 	return out, nil
+}
+
+// walk returns the files under dir, recursively, that keep accepts, as paths under
+// dir even when dir itself is a symlink. Every walk of a tree goes through it.
+func walk(dir string, keep func(p string, d os.DirEntry) bool) ([]string, error) {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	err = filepath.WalkDir(real, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(real, p)
+		if under := filepath.Join(dir, rel); keep(under, d) {
+			out = append(out, under)
+		}
+		return nil
+	})
+	return out, err
 }
 
 // Governed returns the absolute path of a markdown or YAML file, which need not

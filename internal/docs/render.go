@@ -8,20 +8,40 @@ import (
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
-func render(s *schema.Schema, t *schema.Type) string {
-	names := append(append([]string(nil), t.Required...), t.Optional...)
-	required := map[string]bool{}
-	for _, n := range t.Required {
-		required[n] = true
-	}
-	spec := func(name string) *schema.Field {
-		if f := t.Resolved[name]; f != nil {
-			return f
-		}
-		return &schema.Field{Name: name}
-	}
+// typePage is one doctype's format page, rendered section by section.
+type typePage struct {
+	s        *schema.Schema
+	t        *schema.Type
+	names    []string // the doctype's fields: required, then optional
+	required map[string]bool
+}
 
-	L := []string{"# Frontmatter for `type: " + t.Doctype + "`", "", banner(s), ""}
+func render(s *schema.Schema, t *schema.Type) string {
+	p := &typePage{s: s, t: t, names: append(append([]string(nil), t.Required...), t.Optional...), required: map[string]bool{}}
+	for _, n := range t.Required {
+		p.required[n] = true
+	}
+	var L []string
+	for _, section := range [][]string{p.heading(), p.copyThis(), p.conditions(), p.fieldGuide(), p.meanings(), p.addingAValue()} {
+		L = append(L, section...)
+	}
+	return strings.Join(L, "\n")
+}
+
+// spec is a field's spec, or a bare one for a field the doctype lists and nothing
+// describes.
+func (p *typePage) spec(name string) *schema.Field {
+	if f := p.t.Resolved[name]; f != nil {
+		return f
+	}
+	return &schema.Field{Name: name}
+}
+
+// heading names the doctype, or the files a YAML doctype governs, and says what the
+// file's top level is.
+func (p *typePage) heading() []string {
+	t := p.t
+	L := []string{"# Frontmatter for `type: " + t.Doctype + "`", "", banner(p.s), ""}
 	if t.IsYAML() {
 		L[0] = "# Format of `" + t.Files + "`"
 	}
@@ -47,20 +67,26 @@ func render(s *schema.Schema, t *schema.Type) string {
 	case "list":
 		L = append(L, "A list, one item per entry, each with the fields below.", "")
 	}
+	return L
+}
 
+// copyThis is the fill-in template: a frontmatter block, or for a YAML doctype a
+// whole file, one entry or one item.
+func (p *typePage) copyThis() []string {
+	t := p.t
 	var body []string
-	for _, name := range names {
+	for _, name := range p.names {
 		if name == "type" && !t.IsYAML() {
 			body = append(body, "type: "+t.Doctype)
 			continue
 		}
 		tail := ""
-		if !required[name] {
+		if !p.required[name] {
 			tail = "   # optional"
 		}
-		body = append(body, template(name, spec(name), tail, "")...)
+		body = append(body, template(name, p.spec(name), tail, "")...)
 	}
-	L = append(L, "## Copy this", "", "```yaml")
+	L := []string{"## Copy this", "", "```yaml"}
 	switch {
 	case !t.IsYAML():
 		L = append(append(append(L, "---"), body...), "---")
@@ -80,26 +106,32 @@ func render(s *schema.Schema, t *schema.Type) string {
 	default:
 		L = append(L, body...)
 	}
-	L = append(L, "```", "")
+	return append(L, "```", "")
+}
 
-	for _, c := range t.RequiredWhen {
+// conditions are the doctype's `required_when` rules and where its pages live.
+func (p *typePage) conditions() []string {
+	var L []string
+	for _, c := range p.t.RequiredWhen {
 		var parts []string
 		for i, w := range c.When.Keys {
 			parts = append(parts, "`"+w+": "+value.Text(c.When.Vals[i])+"`")
 		}
 		L = append(L, "**`"+c.Field+"` is required only when "+strings.Join(parts, ", ")+".**", "")
 	}
-
-	if t.Directory != "" {
-		L = append(L, whereItLives(t), "")
+	if p.t.Directory != "" {
+		L = append(L, whereItLives(p.t), "")
 	}
+	return L
+}
 
-	L = append(L, "## What to put in each field", "")
-	for _, name := range names {
-		f := spec(name)
-		v := enumKeys(f)
+// fieldGuide says, for every field, what to put there and which values it takes.
+func (p *typePage) fieldGuide() []string {
+	L := []string{"## What to put in each field", ""}
+	for _, name := range p.names {
+		f := p.spec(name)
 		req := "optional"
-		if required[name] {
+		if p.required[name] {
 			req = "required"
 		}
 		L = append(L, "**`"+name+"`** · "+req+" · `"+valueType(f)+"`"+matches(f)+"  ")
@@ -116,67 +148,82 @@ func render(s *schema.Schema, t *schema.Type) string {
 				L = append(L, "", "Each key "+rule+".")
 			}
 		}
-		if sub := nested(f); len(sub) > 0 || f.Values != nil {
-			L = append(L, "")
-			if f.Values != nil {
-				L = append(L, subKey("each value", f.Values, "")...)
-			}
-			for _, k := range sub {
-				kreq := "optional"
-				if k.Required {
-					kreq = "required"
-				}
-				L = append(L, subKey("`"+k.Name+"`", k, kreq)...)
-			}
-		} else if schema.IsYAMLPath(f.Reference) {
-			L = append(L, "", "Values: any "+refTarget(f.Reference)+". Checked, so a name that is not one is a fault.")
-		} else if f.Reference != "" {
-			by := "by its filename without `.md`"
-			if strings.HasSuffix(f.Reference, "/*") {
-				by = "by its directory name"
-			}
-			L = append(L, "", "Values: any "+refTarget(f.Reference)+", "+
-				by+". Checked, so a name that resolves to no page is a fault.")
-		} else if len(v) > 0 {
-			ticked := make([]string, len(v))
-			for i, x := range v {
-				ticked[i] = "`" + x + "`"
-			}
-			end := "."
-			if hasMeanings(f.Enum()) {
-				end = ", defined below."
-			}
-			L = append(L, "", "Values: "+strings.Join(ticked, " · ")+end)
-		}
-		L = append(L, "")
+		L = append(append(L, fieldValues(f)...), "")
 	}
+	return L
+}
 
-	wrote := false
-	for _, name := range names {
-		f := spec(name)
-		if len(enumKeys(f)) == 0 || !hasMeanings(f.Enum()) {
+// fieldValues describes what a field holds: its nested keys, a map's values, the
+// pages or keys a reference names, or its allowed values.
+func fieldValues(f *schema.Field) []string {
+	v := schema.SortedKeys(f.Enum())
+	if sub := f.Nested(); len(sub) > 0 || f.Values != nil {
+		L := []string{""}
+		if f.Values != nil {
+			L = append(L, subKey("each value", f.Values, "")...)
+		}
+		for _, k := range sub {
+			kreq := "optional"
+			if k.Required {
+				kreq = "required"
+			}
+			L = append(L, subKey("`"+k.Name+"`", k, kreq)...)
+		}
+		return L
+	}
+	switch {
+	case schema.IsYAMLPath(f.Reference):
+		return []string{"", "Values: any " + refTarget(f.Reference) + ". Checked, so a name that is not one is a fault."}
+	case f.Reference != "":
+		by := "by its filename without `.md`"
+		if strings.HasSuffix(f.Reference, "/*") {
+			by = "by its directory name"
+		}
+		return []string{"", "Values: any " + refTarget(f.Reference) + ", " +
+			by + ". Checked, so a name that resolves to no page is a fault."}
+	case len(v) > 0:
+		ticked := make([]string, len(v))
+		for i, x := range v {
+			ticked[i] = "`" + x + "`"
+		}
+		end := "."
+		if hasMeanings(f.Enum()) {
+			end = ", defined below."
+		}
+		return []string{"", "Values: " + strings.Join(ticked, " · ") + end}
+	}
+	return nil
+}
+
+// meanings is a table per field whose values have definitions.
+func (p *typePage) meanings() []string {
+	var L []string
+	for _, name := range p.names {
+		f := p.spec(name)
+		if len(f.Enum()) == 0 || !hasMeanings(f.Enum()) {
 			continue
 		}
-		if !wrote {
+		if len(L) == 0 {
 			L = append(L, "## What the values mean", "")
-			wrote = true
 		}
 		L = append(L, "### `"+name+"`", "")
-		if src, ok := s.Sources[f.Vocabulary]; ok {
-			L = append(L, "Shared vocabulary "+vocabLink(f.Vocabulary)+", read from [`"+src.From+"`](../../"+src.From+").", "")
+		if v := p.s.Vocabularies[f.Vocabulary]; v != nil && v.Source != nil {
+			L = append(L, "Shared vocabulary "+vocabLink(f.Vocabulary)+", read from [`"+v.Source.From+"`](../../"+v.Source.From+").", "")
 		} else if f.Vocabulary != "" {
 			L = append(L, "Shared vocabulary from [../vocabularies/"+f.Vocabulary+".yaml](../vocabularies/"+f.Vocabulary+".yaml).", "")
 		}
 		L = append(L, valuesTable(f.Enum(), f.Vocabulary != "")...)
 		L = append(L, "")
 	}
+	return L
+}
 
-	L = append(L, "## Adding a value", "",
-		"A field's `definitions` keys **are** its allowed values, so a value cannot exist until "+
-			"someone writes down what it means. Prefer an existing one, because a near-synonym "+
-			"fragments every filter. If nothing fits, add it to the right file under "+readmeLink(s)+
-			" with its one line, in the same change that uses it. `"+s.Command("check")+"` fails otherwise.", "")
-	return strings.Join(L, "\n")
+func (p *typePage) addingAValue() []string {
+	return []string{"## Adding a value", "",
+		"A field's `definitions` keys **are** its allowed values, so a value cannot exist until " +
+			"someone writes down what it means. Prefer an existing one, because a near-synonym " +
+			"fragments every filter. If nothing fits, add it to the right file under " + readmeLink(p.s) +
+			" with its one line, in the same change that uses it. `" + p.s.Command("check") + "` fails otherwise.", ""}
 }
 
 func matches(f *schema.Field) string {
@@ -194,7 +241,7 @@ func keyRule(k *schema.Field) string {
 	}
 	if k.Vocabulary != "" {
 		parts = append(parts, "is a value of "+vocabLink(k.Vocabulary))
-	} else if v := enumKeys(k); len(v) > 0 {
+	} else if v := schema.SortedKeys(k.Enum()); len(v) > 0 {
 		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
 	}
 	if k.Reference != "" {

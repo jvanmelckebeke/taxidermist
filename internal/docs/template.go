@@ -1,7 +1,6 @@
 package docs
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
@@ -14,15 +13,10 @@ func valueType(f *schema.Field) string {
 	return f.Value
 }
 
-// nested is the key block of an object field or of a list's items, whichever it has.
-func nested(f *schema.Field) []*schema.Field {
-	return f.Nested()
-}
-
 // template is a field's lines in the "Copy this" block, at the given indent, with
 // every nested key, map value and list item below it.
 func template(name string, f *schema.Field, tail, in string) []string {
-	sub := nested(f)
+	sub := f.Nested()
 	switch {
 	case f.Value == "map":
 		out := []string{in + name + ":" + tail}
@@ -51,7 +45,7 @@ func template(name string, f *schema.Field, tail, in string) []string {
 		}
 		return out
 	}
-	v := enumKeys(f)
+	v := schema.SortedKeys(f.Enum())
 	switch {
 	case len(v) > 0 && f.Value == "list":
 		return []string{in + name + ": [<" + strings.Join(v, " | ") + ">]" + tail}
@@ -85,20 +79,6 @@ func subKey(name string, k *schema.Field, req string) []string {
 		}
 		out = append(out, line)
 	}
-	return out
-}
-
-// enumKeys is a field's allowed values, sorted, once each.
-func enumKeys(f *schema.Field) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, d := range f.Enum() {
-		if !seen[d.Key] {
-			seen[d.Key] = true
-			out = append(out, d.Key)
-		}
-	}
-	sort.Strings(out)
 	return out
 }
 

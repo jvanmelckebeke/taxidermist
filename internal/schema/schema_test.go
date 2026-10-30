@@ -114,7 +114,7 @@ func TestADefinitionCanSayWhatAValueIsNotFor(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]schema.Def{}
-	for _, d := range s.Vocabularies["v"] {
+	for _, d := range s.Vocabularies["v"].Defs {
 		got[d.Key] = d
 	}
 	want := map[string]schema.Def{
@@ -174,11 +174,11 @@ func TestAVocabularyReadsItsValuesFromADataFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := s.Vocabularies["listed"]
+	got := s.Vocabularies["listed"].Defs
 	if len(got) != 2 || got[0] != (schema.Def{Key: "a", Means: "The first."}) || got[1] != (schema.Def{Key: "b"}) {
 		t.Errorf("defs = %+v", got)
 	}
-	if got := s.Vocabularies["team"]; len(got) != 2 || got[1].Key != "platform" || got[1].Means != "Keeps the servers and the build running." {
+	if got := s.Vocabularies["team"].Defs; len(got) != 2 || got[1].Key != "platform" || got[1].Means != "Keeps the servers and the build running." {
 		t.Errorf("team = %+v", got)
 	}
 }

@@ -1,4 +1,4 @@
-// Package value names and prints the Go values yaml.v3 decodes frontmatter into.
+// Package value names, prints and type-checks the Go values yaml.v3 decodes YAML into.
 package value
 
 import (
