@@ -46,6 +46,9 @@ Paths in `scope.yaml`, `exempt.yaml`, `directory:`, `files:`, `from:` and
 taxonomy directory is checked, even under a root of `.`: it holds the schema and the
 generated `format/` pages.
 
+A root in `scope.yaml`'s `roots:` is a directory, which governs everything under it,
+or a single file, which governs that file and nothing beside it.
+
 A document's `type:` selects its schema. A type file declares that doctype's
 `required` and `optional` fields; a key in neither list is a fault. It can also
 compose `traits`, add `required_when` conditions and define its own `fields`. The

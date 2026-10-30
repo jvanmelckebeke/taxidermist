@@ -3,6 +3,7 @@ package check
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -218,5 +219,36 @@ func put(dir, rel, body string) {
 	}
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		panic(err)
+	}
+}
+
+func TestAFileRootGovernsThatFileAlone(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	testutil.Write(t, dir, "taxonomy/scope.yaml", "roots:\n- notes/kept.md\n- config/site.yaml\n- config/teams.yaml\n")
+	kept := testutil.Write(t, dir, "notes/kept.md", goodNote)
+	beside := testutil.Write(t, dir, "notes/beside.md", "---\ntype: nothing\n---\n")
+	site := filepath.Join(dir, "config", "site.yaml")
+	other := testutil.Write(t, dir, "config/other.yaml", "a: 1\n")
+	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	walked, err := Files(s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	teams := filepath.Join(dir, "config", "teams.yaml")
+	if want := []string{site, teams, kept}; !reflect.DeepEqual(walked, want) {
+		t.Errorf("walked %q, want %q", walked, want)
+	}
+	named, err := Files(s, []string{kept, beside, site, other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{kept, site}; !reflect.DeepEqual(named, want) {
+		t.Errorf("filtered %q, want %q", named, want)
+	}
+	if faults := New(s).Run(walked).Faults; len(faults) > 0 {
+		t.Errorf("faults %v", faults)
 	}
 }

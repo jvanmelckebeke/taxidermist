@@ -139,3 +139,12 @@ func TestARootOfDotHoldsEverything(t *testing.T) {
 		t.Errorf("rules fired %v", got)
 	}
 }
+
+func TestAFileRootReachesTheDoctypeWhoseFilesItIs(t *testing.T) {
+	got := rules(t, func(tax string) {
+		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- config\n", "- config/site.yaml\n- config/teams.yaml\n- config/rota.yaml\n")
+	})
+	if len(got) > 0 {
+		t.Errorf("rules fired %v", got)
+	}
+}
