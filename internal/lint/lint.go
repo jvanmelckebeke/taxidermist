@@ -5,12 +5,7 @@ package lint
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 
-	"github.com/jvanmelckebeke/taxidermist/internal/check"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 )
 
@@ -36,226 +31,30 @@ var Rules = []struct{ ID, Doc string }{
 	{"files-one-type", "every YAML file under a governed root matches the files: of at most one doctype"},
 }
 
+// adder records one problem under a rule.
+type adder func(rule, format string, a ...any)
+
 func Run(s *schema.Schema) []Problem {
 	var out []Problem
 	add := func(rule, format string, a ...any) {
 		out = append(out, Problem{rule, fmt.Sprintf(format, a...)})
 	}
-	doctypes := s.Doctypes()
-
-	for _, f := range s.Singletons {
-		for _, d := range f.AppliesTo {
-			if s.Types[d] == nil {
-				add("applies-to-known", "singleton `%s` applies to `%s`, which has no types/ file", f.Name, d)
-			}
-		}
-	}
-
-	for _, dt := range doctypes {
-		t := s.Types[dt]
-		req := map[string]bool{}
-		for _, n := range t.Required {
-			req[n] = true
-		}
-		var both []string
-		for _, n := range t.Optional {
-			if req[n] {
-				both = append(both, n)
-			}
-		}
-		if len(both) > 0 {
-			add("required-optional-disjoint", "`%s`: %s in both required and optional", dt, strings.Join(both, ", "))
-		}
-		declared := t.Declared()
-		for _, f := range t.Fields.Vals {
-			if !declared[f.Name] {
-				add("own-fields-allowed", "`%s` defines `%s` but never lists it in required or optional", dt, f.Name)
-			}
-		}
-	}
-
-	for _, dt := range doctypes {
-		t := s.Types[dt]
-		declared := t.Declared()
-		for _, n := range append(append([]string(nil), t.Required...), t.Optional...) {
-			f := t.Resolved[n]
-			if f != nil && f.Excludes != "" && !declared[f.Excludes] {
-				add("excludes-declared", "`%s`: `%s` excludes `%s`, which `%s` does not declare", dt, n, f.Excludes, dt)
-			}
-		}
-	}
-
-	eachField(s, func(where string, f *schema.Field) {
-		for _, k := range append(append([]*schema.Field(nil), f.Schema.Vals...), f.Items.Vals...) {
-			if k.Excludes != "" {
-				add("excludes-declared", "%s.%s has excludes, which only a top-level field checks", where, k.Name)
-			}
-		}
-		if f.Guidance == "" {
-			add("guidance", "%s has no guidance, so its format page says the schema has no opinion", where)
-		}
-	})
-
-	for _, tr := range s.Traits {
-		n := 0
-		for _, dt := range doctypes {
-			if contains(s.Types[dt].Traits, tr.Name) {
-				n++
-			}
-		}
-		if n < 3 {
-			add("trait-breadth", "trait `%s` is composed by %d doctype(s); a bundle on fewer than 3 is a lookup hop, so move its fields to singletons.yaml", tr.Name, n)
-		}
-	}
-
-	// Traits and singletons bundle frontmatter, so a YAML doctype does not count here.
-	pages := 0
-	for _, dt := range doctypes {
-		if !s.Types[dt].IsYAML() {
-			pages++
-		}
-	}
-	for _, f := range s.Singletons {
-		n := len(f.AppliesTo)
-		if n >= 3 && n >= pages-1 {
-			add("singleton-not-universal", "singleton `%s` is on %d of %d frontmatter doctypes; promote it to a trait", f.Name, n, pages)
-		}
-	}
-
-	for _, dt := range doctypes {
-		t := s.Types[dt]
-		seen := map[string]int{}
-		for _, trn := range t.Traits {
-			if tr := s.Trait(trn); tr != nil {
-				for _, f := range tr.Fields {
-					seen[f.Name]++
-				}
-			}
-		}
-		for _, f := range s.Singletons {
-			if contains(f.AppliesTo, dt) {
-				seen[f.Name]++
-			}
-		}
-		for _, f := range t.Fields.Vals {
-			seen[f.Name]++
-		}
-		var dupes []string
-		for n, c := range seen {
-			if c > 1 {
-				dupes = append(dupes, n)
-			}
-		}
-		sort.Strings(dupes)
-		if len(dupes) > 0 {
-			add("declared-once", "`%s` gets %s from more than one of its traits, singletons and own fields", dt, strings.Join(dupes, ", "))
-		}
-	}
-
-	inTraits := map[string]bool{}
-	for _, tr := range s.Traits {
-		for _, f := range tr.Fields {
-			inTraits[f.Name] = true
-		}
-	}
-	for _, f := range s.Singletons {
-		if inTraits[f.Name] {
-			add("trait-singleton-overlap", "`%s` is both a trait field and a singleton", f.Name)
-		}
-	}
-	for _, sg := range s.Segments {
-		dir := filepath.Join(s.Base, filepath.FromSlash(sg.Dir))
-		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-			add("segment-path", "segment `%s`: %s does not exist", sg.Path, sg.Dir)
-		} else if !underRoot(s, sg.Dir) {
-			add("segment-path", "segment `%s` is under no root in scope.yaml, so check never reaches it", sg.Path)
-		}
-		if sg.Field != "" && len(s.Owners[sg.Field]) == 0 {
-			add("segment-field", "segment `%s` names field `%s`, which no doctype declares", sg.Path, sg.Field)
-		}
-	}
-	for _, dt := range doctypes {
-		t := s.Types[dt]
-		if t.IsYAML() && !underRoot(s, globDir(t.Files)) {
-			add("files-under-root", "`%s`: `files: %s` is under no root in scope.yaml, so check never reaches it", dt, t.Files)
-		}
-	}
-	if s.HasYAML() {
-		files, err := check.Files(s, nil)
-		if err != nil {
-			add("files-one-type", "%v", err)
-		}
-		for _, p := range files {
-			if !schema.IsYAMLPath(p) {
-				continue
-			}
-			rel, _ := filepath.Rel(s.Base, p)
-			types := s.TypesOf(filepath.ToSlash(rel))
-			if len(types) < 2 {
-				continue
-			}
-			var names []string
-			for _, t := range types {
-				names = append(names, "`"+t.Doctype+"`")
-			}
-			add("files-one-type", "%s matches the files: of %s; a file has one doctype", schema.Display(p), strings.Join(names, " and "))
-		}
+	for _, step := range []func(*schema.Schema, adder){
+		appliesToKnown,
+		fieldLists,
+		excludesDeclared,
+		fieldSpecs,
+		traitBreadth,
+		singletonNotUniversal,
+		declaredOnce,
+		traitSingletonOverlap,
+		segmentRules,
+		filesUnderRoot,
+		filesOneType,
+	} {
+		step(s, add)
 	}
 	return out
-}
-
-// globDir is the directory part of a path glob before its first wildcard.
-func globDir(glob string) string {
-	parts := strings.Split(glob, "/")
-	var fixed []string
-	for _, p := range parts[:len(parts)-1] {
-		if strings.ContainsAny(p, "*?[") {
-			break
-		}
-		fixed = append(fixed, p)
-	}
-	return strings.Join(fixed, "/")
-}
-
-func underRoot(s *schema.Schema, dir string) bool {
-	for _, r := range s.Roots {
-		r = filepath.ToSlash(filepath.Clean(r))
-		if dir == r || strings.HasPrefix(dir, r+"/") {
-			return true
-		}
-	}
-	return false
-}
-
-// eachField visits every field spec in the schema, nested keys included.
-func eachField(s *schema.Schema, visit func(where string, f *schema.Field)) {
-	var walk func(where string, f *schema.Field)
-	walk = func(where string, f *schema.Field) {
-		visit(where, f)
-		for _, k := range f.Schema.Vals {
-			walk(where+"."+k.Name, k)
-		}
-		for _, k := range f.Items.Vals {
-			walk(where+"[]."+k.Name, k)
-		}
-		if f.Values != nil {
-			walk(where+".<values>", f.Values)
-		}
-	}
-	for _, tr := range s.Traits {
-		for _, f := range tr.Fields {
-			walk("traits.yaml "+tr.Name+"."+f.Name, f)
-		}
-	}
-	for _, f := range s.Singletons {
-		walk("singletons.yaml "+f.Name, f)
-	}
-	for _, dt := range s.Doctypes() {
-		t := s.Types[dt]
-		for _, f := range t.Fields.Vals {
-			walk("types/"+t.Slug+".yaml "+f.Name, f)
-		}
-	}
 }
 
 func contains(xs []string, x string) bool {
