@@ -23,6 +23,30 @@ Each `v*` tag publishes a GitHub release with
 `taxidermist_<version>_<os>_<arch>.tar.gz` for linux/amd64, linux/arm64 and
 darwin/arm64, the binary at the archive root, and a `checksums.txt` of sha256 sums.
 
+### In CI
+
+The repo is also a GitHub Actions action. It downloads the release for the
+runner's OS and architecture, checks it against `checksums.txt`, and puts
+`taxidermist` on PATH for the job's later steps. It runs nothing itself. The ref
+you call it at picks the release, so the action and the binary move together:
+
+```yaml
+- uses: jvanmelckebeke/taxidermist@v0.9.0
+- run: taxidermist check --taxonomy taxonomy
+```
+
+Gitea Actions resolves a bare `owner/repo` against its own default actions
+host, so give it the full URL:
+
+```yaml
+- uses: https://github.com/jvanmelckebeke/taxidermist@v0.9.0
+```
+
+`with: {version: v0.8.2}` installs a different release than the ref. A branch,
+a commit or `uses: ./` names no release, and the action fails unless `version`
+is set. Windows and Intel macOS runners fail too, because no release ships
+those builds.
+
 ## The schema
 
 A `taxonomy/` directory, next to the content it governs. [`example/`](example/) is a
