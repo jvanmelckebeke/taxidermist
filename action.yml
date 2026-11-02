@@ -1,0 +1,20 @@
+name: taxidermist
+description: >
+  Puts the taxidermist binary on PATH for the job's later steps, from the GitHub release named by
+  the ref this action is called with, checked against the release's sha256 checksums.
+inputs:
+  version:
+    description: >
+      The release to install, such as v0.9.0 or 0.9.0. Defaults to the ref the action is called
+      with, so `taxidermist@v0.9.0` installs v0.9.0. Required when that ref is not a release tag,
+      such as `uses: ./`, a branch or a commit.
+    # Read here: inside the action's own run steps the GitHub runner sets github.action_ref to null.
+    default: ${{ github.action_ref }}
+runs:
+  using: composite
+  steps:
+  - name: taxidermist / install
+    shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    run: '"$GITHUB_ACTION_PATH/scripts/install.sh" "$VERSION"'

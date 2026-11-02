@@ -17,3 +17,20 @@ jobs:
     - run: go test ./...
     - run: python3 -m venv .venv && .venv/bin/pip install ./python pytest
     - run: .venv/bin/pytest python/tests
+
+  action:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v7
+    - uses: ./
+      with:
+        version: v0.8.2
+    - run: test "$(taxidermist --version)" = "taxidermist 0.8.2"
+    # Called by path there is no release ref, so without version the action refuses.
+    - id: no-ref
+      uses: ./
+      continue-on-error: true
+    - run: test "${{ steps.no-ref.outcome }}" = failure
