@@ -113,11 +113,7 @@ func (p *typePage) copyThis() []string {
 func (p *typePage) conditions() []string {
 	var L []string
 	for _, c := range p.t.RequiredWhen {
-		var parts []string
-		for i, w := range c.When.Keys {
-			parts = append(parts, "`"+w+": "+value.Text(c.When.Vals[i])+"`")
-		}
-		L = append(L, "**`"+c.Field+"` is required only when "+strings.Join(parts, ", ")+".**", "")
+		L = append(L, "**`"+c.Field+"` is required only when "+whenText(c.When)+".**", "")
 	}
 	if p.t.Directory != "" || p.t.Stem != "" {
 		L = append(L, whereItLives(p.t), "")
@@ -334,4 +330,18 @@ func whereItLives(t *schema.Type) string {
 		return line + " A page anywhere else, or named anything else, fails the check."
 	}
 	return line + " A page anywhere else fails the check."
+}
+
+// whenText words a required_when condition. An empty value matches an absent key as
+// well as an empty one, so it reads "not set" instead of a dangling "key: ".
+func whenText(w schema.Ordered[any]) string {
+	var parts []string
+	for i, k := range w.Keys {
+		if t := value.Text(w.Vals[i]); t == "" {
+			parts = append(parts, "`"+k+"` is not set")
+		} else {
+			parts = append(parts, "`"+k+": "+t+"`")
+		}
+	}
+	return strings.Join(parts, ", ")
 }
