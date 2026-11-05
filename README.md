@@ -196,8 +196,9 @@ A type file with `files:` governs plain YAML files instead of frontmatter. The
 glob is matched against the file's path, and a `.yaml` or `.yml` file under a
 governed root takes the doctype whose glob matches it. The path decides the
 doctype, not a field, since many such files have nowhere to put a `type:` key. A
-file no glob matches is ungoverned, which `ungoverned: error` makes a fault and
-`ungoverned: report` tallies under `<yaml>`. Two globs matching one file is a fault
+file no glob matches is not checked and is never a fault, as a page with no
+frontmatter is not; `ungoverned: report` tallies it under `<yaml>`, so
+`check --ungoverned` lists it. Two globs matching one file is a fault
 in `check` and in `lint`. Until some type has `files:`, YAML files are not checked
 at all. Markdown keeps choosing its doctype with `type:`.
 

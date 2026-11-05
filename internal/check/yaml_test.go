@@ -17,7 +17,25 @@ const goodTeams = `platform:
 
 func TestAYAMLFileTakesTheDoctypeItsPathMatches(t *testing.T) {
 	expect(t, faults(t, "config/teams.yaml", goodTeams))
-	expect(t, faults(t, "config/other.yml", "a: 1\n"), "value <file>")
+	expect(t, faults(t, "config/other.yml", "a: 1\n"))
+}
+
+func TestAYAMLFileNoDoctypeClaimsIsNoFault(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	testutil.Write(t, dir, "notes/garden/plan.yaml", "beds: 3\n")
+	testutil.Write(t, dir, "projects/infra/deploy.yml", "- step: build\n")
+	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Files(s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(s).Run(files)
+	if len(r.Faults) != 0 || len(r.Ungoverned) != 0 {
+		t.Errorf("faults %+v, ungoverned %v", r.Faults, r.Ungoverned)
+	}
 }
 
 func TestAMapEntryFaultNamesThePathDownToTheKey(t *testing.T) {

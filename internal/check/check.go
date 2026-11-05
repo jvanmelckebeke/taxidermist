@@ -4,8 +4,8 @@
 // Seven kinds of fault:
 //
 //	value    a value outside the field's allowed values for that doctype, one that
-//	         misses its pattern, a reference naming no page or key, a YAML file no
-//	         doctype's `files:` matches, or two do, a field on a doctype it does not apply to, a value
+//	         misses its pattern, a reference naming no page or key, a YAML file two
+//	         doctypes' `files:` match, a field on a doctype it does not apply to, a value
 //	         that repeats the field its spec `excludes`, a page outside the folder
 //	         its doctype's `directory:` or `path:` names, a page whose filename
 //	         differs from its `path:` template filled from its frontmatter, a page
