@@ -89,6 +89,7 @@ func Load(dir string) (*Schema, error) {
 		s.loadTraits,
 		s.loadSingletons,
 		s.loadTypes,
+		s.checkReferenceTypes,
 		s.checkSources,
 	}
 	for _, step := range steps {
@@ -97,6 +98,50 @@ func Load(dir string) (*Schema, error) {
 		}
 	}
 	return s, nil
+}
+
+// checkReferenceTypes rejects a `reference_type:` that names no markdown doctype,
+// which no page could ever satisfy.
+func (s *Schema) checkReferenceTypes() error {
+	var walk func(f *Field, where string) error
+	walk = func(f *Field, where string) error {
+		if f == nil {
+			return nil
+		}
+		if f.RefType != "" {
+			if t := s.Types[f.RefType]; t == nil || t.IsYAML() {
+				return errf("%s: field `%s` has `reference_type: %s`, which is no page doctype. Known: %s.",
+					where, f.Name, f.RefType, strings.Join(s.PageDoctypes(), ", "))
+			}
+		}
+		for _, sub := range append(append([]*Field{f.Key, f.Values}, f.Schema.Vals...), f.Items.Vals...) {
+			if err := walk(sub, where+": "+f.Name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, f := range s.Singletons {
+		if err := walk(f, "singletons.yaml"); err != nil {
+			return err
+		}
+	}
+	for _, tr := range s.Traits {
+		for _, f := range tr.Fields {
+			if err := walk(f, "traits.yaml: "+tr.Name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, dt := range s.Doctypes() {
+		t := s.Types[dt]
+		for _, f := range append([]*Field{t.Key}, t.Fields.Vals...) {
+			if err := walk(f, "types/"+t.Slug+".yaml"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // VocabularyNames returns the vocabulary names, sorted.

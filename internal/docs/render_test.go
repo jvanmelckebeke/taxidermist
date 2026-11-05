@@ -269,3 +269,53 @@ func TestAFromVocabularySaysToAddValuesToItsDataFile(t *testing.T) {
 		t.Error("note.md names a data file, and none of its vocabularies has one")
 	}
 }
+
+func TestAPathRendersWhereThePageLivesAndItsName(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{"projects/{topic}.{status}", "The page lives at `projects/{topic}.{status}.md`, filled from its own frontmatter, " +
+			"and its slug is unique under [`projects/`](../../projects/). A page anywhere else, or named anything else, fails the check."},
+		{"'{topic}.{status}'", "The page is named `{topic}.{status}.md`, filled from its own frontmatter, in any folder. " +
+			"A page named anything else fails the check."},
+	}
+	for _, c := range cases {
+		dir := testutil.CopyExample(t)
+		tax := filepath.Join(dir, "taxonomy")
+		p := filepath.Join(tax, "types", "project-plan.yaml")
+		b, _ := os.ReadFile(p)
+		body := strings.Replace(string(b), "- topic\n", "- topic\n- status\n", 1)
+		body = strings.Replace(body, "fields: {}", "path: "+c.path+"\nfields:\n  status: {value: str}", 1)
+		os.WriteFile(p, []byte(body), 0o644)
+		s, err := schema.Load(tax)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, err := Pages(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(pages["project-plan"], "\n"+c.want+"\n") {
+			t.Errorf("%s: project-plan.md lacks %q", c.path, c.want)
+		}
+	}
+}
+
+func TestAReferenceTypeRendersOnTheFormatPage(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "singletons.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people\n    reference_type: person\n", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Values: any page under [`people/`](../../people/) whose `type:` is `person`, by its filename without `.md`. " +
+		"Checked, so a name that resolves to no page, or to a page of another type, is a fault."
+	if !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
+	}
+}

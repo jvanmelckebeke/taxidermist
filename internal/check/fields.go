@@ -56,7 +56,7 @@ func (c *Checker) element(label string, x any, spec *schema.Field, add adder) {
 		add("value", label, x, "does not match `"+spec.Pattern+"`")
 	}
 	if spec.Reference != "" {
-		c.references(label, x, spec.Reference, add)
+		c.references(label, x, spec, add)
 		return
 	}
 	if enum := spec.Enum(); len(enum) > 0 && !member(x, enum) {

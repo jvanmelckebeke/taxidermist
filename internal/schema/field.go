@@ -77,22 +77,23 @@ type Field struct {
 	Definitions Ordered[Meaning] `yaml:"definitions"`
 	Vocabulary  string           `yaml:"vocabulary"`
 	Dynamic     bool             `yaml:"dynamic"`
-	Schema      Ordered[*Field]  `yaml:"schema"`     // keys of a `value: object`, or of each value of a `value: map`
-	Items       Ordered[*Field]  `yaml:"items"`      // keys of each mapping in a `value: list`
-	Reference   string           `yaml:"reference"`  // a directory of pages, `<dir>/*`, or a YAML file whose top-level keys are the values
-	Pattern     string           `yaml:"pattern"`    // a regular expression every scalar value matches
-	Key         *Field           `yaml:"key"`        // a `value: map`'s keys
-	Values      *Field           `yaml:"values"`     // a `value: map`'s values, when they are not mappings with a `schema:`
-	Required    bool             `yaml:"required"`   // nested keys only
-	AppliesTo   []string         `yaml:"applies_to"` // singletons only
-	Excludes    string           `yaml:"excludes"`   // a field whose value this one never repeats
+	Schema      Ordered[*Field]  `yaml:"schema"`         // keys of a `value: object`, or of each value of a `value: map`
+	Items       Ordered[*Field]  `yaml:"items"`          // keys of each mapping in a `value: list`
+	Reference   string           `yaml:"reference"`      // a directory of pages, `<dir>/*`, or a YAML file whose top-level keys are the values
+	RefType     string           `yaml:"reference_type"` // the `type:` a referenced page must declare
+	Pattern     string           `yaml:"pattern"`        // a regular expression every scalar value matches
+	Key         *Field           `yaml:"key"`            // a `value: map`'s keys
+	Values      *Field           `yaml:"values"`         // a `value: map`'s values, when they are not mappings with a `schema:`
+	Required    bool             `yaml:"required"`       // nested keys only
+	AppliesTo   []string         `yaml:"applies_to"`     // singletons only
+	Excludes    string           `yaml:"excludes"`       // a field whose value this one never repeats
 	defs        []Def
 	re          *regexp.Regexp
 }
 
 func (f *Field) UnmarshalYAML(n *yaml.Node) error {
 	if err := strict(n, "a field", "value", "guidance", "definitions", "vocabulary", "dynamic",
-		"schema", "items", "reference", "pattern", "key", "values", "required", "applies_to", "excludes"); err != nil {
+		"schema", "items", "reference", "reference_type", "pattern", "key", "values", "required", "applies_to", "excludes"); err != nil {
 		return err
 	}
 	type plain Field
@@ -139,6 +140,10 @@ func (s *Schema) bind(f *Field, where string) error {
 			return errf("%s: field `%s` has a pattern that does not compile: %v", where, f.Name, err)
 		}
 		f.re = re
+	}
+	if f.RefType != "" && (f.Reference == "" || IsYAMLPath(f.Reference)) {
+		return errf("%s: field `%s` has `reference_type:`, which goes with a `reference:` to pages; "+
+			"a YAML file's keys have no type.", where, f.Name)
 	}
 	if (f.Key != nil || f.Values != nil) && f.Value != "map" {
 		return errf("%s: field `%s` has `key:` or `values:`, which go with `value: map`.", where, f.Name)

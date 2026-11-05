@@ -119,7 +119,7 @@ func (p *typePage) conditions() []string {
 		}
 		L = append(L, "**`"+c.Field+"` is required only when "+strings.Join(parts, ", ")+".**", "")
 	}
-	if p.t.Directory != "" {
+	if p.t.Directory != "" || p.t.Stem != "" {
 		L = append(L, whereItLives(p.t), "")
 	}
 	return L
@@ -173,14 +173,17 @@ func fieldValues(f *schema.Field) []string {
 	}
 	switch {
 	case schema.IsYAMLPath(f.Reference):
-		return []string{"", "Values: any " + refTarget(f.Reference) + ". Checked, so a name that is not one is a fault."}
+		return []string{"", "Values: any " + refTarget(f) + ". Checked, so a name that is not one is a fault."}
 	case f.Reference != "":
 		by := "by its filename without `.md`"
 		if strings.HasSuffix(f.Reference, "/*") {
 			by = "by its directory name"
 		}
-		return []string{"", "Values: any " + refTarget(f.Reference) + ", " +
-			by + ". Checked, so a name that resolves to no page is a fault."}
+		fault := "a name that resolves to no page is a fault."
+		if f.RefType != "" {
+			fault = "a name that resolves to no page, or to a page of another type, is a fault."
+		}
+		return []string{"", "Values: any " + refTarget(f) + ", " + by + ". Checked, so " + fault}
 	case len(v) > 0:
 		ticked := make([]string, len(v))
 		for i, x := range v {
@@ -265,7 +268,7 @@ func keyRule(k *schema.Field) string {
 		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
 	}
 	if k.Reference != "" {
-		parts = append(parts, "is a "+refTarget(k.Reference))
+		parts = append(parts, "is a "+refTarget(k))
 	}
 	return joinAnd(parts)
 }
@@ -283,20 +286,34 @@ func joinAnd(xs []string) string {
 // refTarget names what a `reference:` resolves against, linked: the pages anywhere
 // under a directory, for `<dir>/*` the directories directly under it that hold an
 // index.md, or the top-level keys of a YAML file.
-func refTarget(ref string) string {
+func refTarget(f *schema.Field) string {
+	ref := f.Reference
 	if schema.IsYAMLPath(ref) {
 		return "top-level key of [`" + ref + "`](../../" + ref + ")"
 	}
-	if dir, ok := strings.CutSuffix(ref, "/*"); ok {
-		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`"
+	typed := ""
+	if f.RefType != "" {
+		typed = " whose `type:` is `" + f.RefType + "`"
 	}
-	return "page under [`" + ref + "/`](../../" + ref + "/)"
+	if dir, ok := strings.CutSuffix(ref, "/*"); ok {
+		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`" + typed
+	}
+	return "page under [`" + ref + "/`](../../" + ref + "/)" + typed
 }
 
-// whereItLives says which folder a doctype's pages sit in, from its `directory:`.
+// whereItLives says which folder a doctype's pages sit in, from its `directory:`, and
+// what the file is named, from its `path:`.
 func whereItLives(t *schema.Type) string {
-	line := "The page lives at `" + t.Directory + "/<slug>.md`"
-	if schema.Placeholder.MatchString(t.Directory) {
+	if t.Directory == "" {
+		return "The page is named `" + t.Stem + ".md`, filled from its own frontmatter, in any folder. " +
+			"A page named anything else fails the check."
+	}
+	at := t.Directory + "/<slug>"
+	if t.Stem != "" {
+		at = t.Path
+	}
+	line := "The page lives at `" + at + ".md`"
+	if schema.Placeholder.MatchString(at) {
 		line += ", filled from its own frontmatter"
 	}
 	if prefix := schema.DirectoryPrefix(t.Directory); prefix != "" {
@@ -312,6 +329,9 @@ func whereItLives(t *schema.Type) string {
 		if rest := strings.Trim(strings.Replace("/"+t.Directory+"/", "/"+part+"/", "/", 1), "/"); rest != "" {
 			line += " A page with no `" + m[1] + "` sits directly in `" + rest + "/`."
 		}
+	}
+	if t.Stem != "" {
+		return line + " A page anywhere else, or named anything else, fails the check."
 	}
 	return line + " A page anywhere else fails the check."
 }

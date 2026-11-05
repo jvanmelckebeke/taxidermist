@@ -32,6 +32,9 @@ func (c *Checker) markdownFile(path string, raw []byte, r *Result, add adder) {
 	if t.Directory != "" {
 		c.directory(path, fm, t.Directory, required, add)
 	}
+	if t.Stem != "" {
+		c.stem(path, fm, t, add)
+	}
 }
 
 // pageType is the doctype a page's `type:` names. It is nil, with the reason

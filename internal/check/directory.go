@@ -59,6 +59,32 @@ func (c *Checker) directory(path string, fm *value.Mapping, pattern string, requ
 	}
 }
 
+// stem checks that a page's filename is its doctype's `path:` stem with each
+// `{field}` filled from its frontmatter. A field the page lacks already has its
+// `missing` fault.
+func (c *Checker) stem(path string, fm *value.Mapping, t *schema.Type, add adder) {
+	var fields []string
+	for _, m := range schema.Placeholder.FindAllStringSubmatch(t.Stem, -1) {
+		if !present(fm, m[1]) {
+			return
+		}
+		fields = append(fields, m[1])
+	}
+	want := schema.Placeholder.ReplaceAllStringFunc(t.Stem, func(ph string) string {
+		v, _ := fm.Get(ph[1 : len(ph)-1])
+		return value.Text(v)
+	})
+	got := strings.TrimSuffix(filepath.Base(path), ".md")
+	if got == want {
+		return
+	}
+	label := strings.Join(fields, ", ")
+	if label == "" {
+		label = "path"
+	}
+	add("value", label, got, "the file is "+got+".md but its frontmatter names it "+want+".md (`path: "+t.Path+"`)")
+}
+
 // present is true when the page gives the field a value that can fill a path.
 func present(fm *value.Mapping, field string) bool {
 	v, ok := fm.Get(field)
