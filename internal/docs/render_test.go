@@ -319,3 +319,11 @@ func TestAReferenceTypeRendersOnTheFormatPage(t *testing.T) {
 		t.Errorf("note.md lacks %q", want)
 	}
 }
+
+func TestWhenTextWordsEmptyConditions(t *testing.T) {
+	w := schema.Ordered[any]{Keys: []string{"archived", "status", "owner", "tags"}, Vals: []any{nil, "final", "", ""}}
+	want := "`archived` is not set, `status: final`, `owner` is not set, `tags` is not set"
+	if got := whenText(w); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
