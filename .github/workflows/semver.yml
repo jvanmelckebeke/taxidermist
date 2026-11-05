@@ -1,43 +1,46 @@
 name: semver
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
 
-# Runs queue one after another, so each reads the latest tag after the
-# previous run has pushed its own.
+# Runs queue one after another. GitHub keeps one pending run per group and
+# cancels older pending ones, which is safe because each run tags every
+# merge since the latest tag.
 concurrency:
   group: semver-main
   cancel-in-progress: false
 
 jobs:
   tag:
-    if: github.event.pull_request.merged
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     outputs:
       tag: ${{ steps.next.outputs.tag }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
-        ref: ${{ github.event.pull_request.merge_commit_sha }}
     - id: next
       env:
-        LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        GH_TOKEN: ${{ github.token }}
       run: |
-        bumps=$(printf '%s\n' $LABELS | grep -E '^semver:(major|minor|patch)$' | sort -u || true)
-        case $(printf '%s' "$bumps" | grep -c .) in
-          0) echo "no semver label, no release"; exit 0 ;;
-          1) ;;
-          *) echo "::error::more than one semver label: $bumps"; exit 1 ;;
-        esac
         git fetch --tags --force origin
         last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+        range=${last:+$last..}HEAD
+        labels=$(git rev-list "$range" | while read -r sha; do
+          gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" \
+            --jq '.[] | select(.merged_at != null and .base.ref == "main") | .labels[].name'
+        done | sort -u)
+        if grep -qx 'semver:major' <<< "$labels"; then bump=major
+        elif grep -qx 'semver:minor' <<< "$labels"; then bump=minor
+        elif grep -qx 'semver:patch' <<< "$labels"; then bump=patch
+        else echo "no semver label since ${last:-the start}, no release"; exit 0
+        fi
         IFS=. read -r major minor patch <<< "${last#v}"
-        case ${bumps#semver:} in
+        case $bump in
           major) major=$((major + 1)); minor=0; patch=0 ;;
           minor) minor=$((minor + 1)); patch=0 ;;
           patch) patch=$((patch + 1)) ;;
