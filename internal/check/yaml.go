@@ -12,8 +12,8 @@ import (
 	"github.com/jvanmelckebeke/taxidermist/internal/value"
 )
 
-// Ungoverned YAML files are tallied under this name when scope.yaml says
-// `ungoverned: report`, since they have no doctype to tally under.
+// YAML files no doctype's `files:` matches are tallied under this name when
+// scope.yaml says `ungoverned: report`, since they have no doctype to tally under.
 const NoFilesMatch = "<yaml>"
 
 // yamlFile checks a YAML file against the one doctype whose `files:` glob matches
@@ -24,11 +24,11 @@ func (c *Checker) yamlFile(path string, raw []byte, r *Result, add adder) {
 	types := c.S.TypesOf(rel)
 	switch {
 	case len(types) == 0:
+		// Like a page with no frontmatter, a YAML file no `files:` claims says nothing
+		// the schema could check, so it is never a fault. Report mode still lists it.
 		if c.S.Ungoverned == "report" {
 			r.Ungoverned[NoFilesMatch] = append(r.Ungoverned[NoFilesMatch], path)
-			return
 		}
-		add("value", "<file>", nil, "no doctype's `files:` matches "+rel+". Known: "+strings.Join(c.S.Globs(), " · "))
 		return
 	case len(types) > 1:
 		var names []string
