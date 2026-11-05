@@ -19,7 +19,7 @@ func (p placed) dir(s *schema.Schema) string {
 }
 
 // segments returns, for each rule whose directory holds the file, the first path
-// component below that directory: a folder name, or the stem of a page sitting
+// component below that directory: a folder name, or the stem of a file sitting
 // directly there. index.md and README.md directly in the directory describe the
 // directory itself and name no segment.
 func (c *Checker) segments(path string) []placed {
@@ -36,7 +36,7 @@ func (c *Checker) segments(path string) []placed {
 		}
 		name, _, nested := strings.Cut(rest, "/")
 		if !nested {
-			name = strings.TrimSuffix(name, ".md")
+			name = strings.TrimSuffix(name, filepath.Ext(name))
 			if name == "index" || name == "README" {
 				continue
 			}

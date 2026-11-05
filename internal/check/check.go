@@ -106,6 +106,7 @@ func (c *Checker) file(path string, raw []byte, r *Result) {
 		r.Faults = append(r.Faults, Fault{Path: path, Kind: kind, Field: field, Value: v, Why: why})
 	}
 	if schema.IsYAMLPath(path) {
+		c.segmentFaults(path, c.segments(path), r)
 		c.yamlFile(path, raw, r, add)
 		return
 	}

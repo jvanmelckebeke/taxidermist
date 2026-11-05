@@ -351,3 +351,10 @@ func TestAReferenceTypeOnADirectoryReferenceReadsTheIndex(t *testing.T) {
 	// infra/index.md has no frontmatter, so no type.
 	expect(t, faults(t, "notes/x.md", note("project: infra\n"), typed), "value project")
 }
+
+func TestASegmentHoldsForYAMLFiles(t *testing.T) {
+	expect(t, faults(t, "projects/infra/deploy.yml", "- step: build\n"))
+	expect(t, faults(t, "projects/foobar/deploy.yml", "- step: build\n"), "segment projects/*")
+	expect(t, faults(t, "projects/garden.yaml", "a: 1\n"))
+	expect(t, faults(t, "projects/foobar.yaml", "a: 1\n"), "segment projects/*")
+}
