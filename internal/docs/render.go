@@ -312,7 +312,9 @@ func whereItLives(t *schema.Type) string {
 	if schema.Placeholder.MatchString(at) {
 		line += ", filled from its own frontmatter"
 	}
-	if prefix := schema.DirectoryPrefix(t.Directory); prefix != "" {
+	if t.SlugScope == "directory" {
+		line += ", and its slug is unique within its own folder."
+	} else if prefix := schema.DirectoryPrefix(t.Directory); prefix != "" {
 		line += ", and its slug is unique under [`" + prefix + "/`](../../" + prefix + "/)."
 	} else {
 		line += ", and its slug is unique under [the taxonomy's parent](../../)."

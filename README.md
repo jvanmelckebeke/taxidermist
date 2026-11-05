@@ -87,7 +87,12 @@ fault. A placeholder whose field is optional and absent drops out of the path:
 `conventions/`. A placeholder must name a field the type declares. Every page's
 filename stem, `index.md` aside, must also be unique under the part of the path before
 the first placeholder, searched recursively, so `collections/pose/x.md` and
-`collections/wardrobe/x.md` are both faults.
+`collections/wardrobe/x.md` are both faults. `slug_scope` sets that scope: `prefix` is
+the default above, and `directory` checks only the page's own resolved folder, without
+its subfolders. A tree that keeps one file name at several depths needs it, so
+`conventions/prompting.md` can sit beside `conventions/{model}/{kind}/prompting.md`
+(`slug_scope: directory`); with the default, that pair is a fault. `slug_scope` needs a
+`directory:` or `path:`.
 
 A type file's `path:` names the filename as well, without `.md`. With
 `path: people/{person}.{aspect}`, a page with `person: alice` and

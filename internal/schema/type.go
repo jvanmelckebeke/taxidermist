@@ -24,18 +24,19 @@ type Type struct {
 	Required     []string          `yaml:"required"`
 	Optional     []string          `yaml:"optional"`
 	RequiredWhen []Condition       `yaml:"-"`
-	Directory    string            `yaml:"directory"` // where its pages live; `{field}` fills from the page
-	Path         string            `yaml:"path"`      // the page's path without `.md`, a template; sets Directory and Stem
-	Stem         string            `yaml:"-"`         // the filename part of Path, which a page's stem must equal once filled
-	Files        string            `yaml:"files"`     // a path glob naming the YAML files of this doctype
-	Shape        string            `yaml:"shape"`     // a YAML file's top level: fields, map or list
-	Key          *Field            `yaml:"key"`       // `shape: map` only: what each top-level key must be
+	Directory    string            `yaml:"directory"`  // where its pages live; `{field}` fills from the page
+	Path         string            `yaml:"path"`       // the page's path without `.md`, a template; sets Directory and Stem
+	SlugScope    string            `yaml:"slug_scope"` // where a slug must be unique: prefix (default) or directory
+	Stem         string            `yaml:"-"`          // the filename part of Path, which a page's stem must equal once filled
+	Files        string            `yaml:"files"`      // a path glob naming the YAML files of this doctype
+	Shape        string            `yaml:"shape"`      // a YAML file's top level: fields, map or list
+	Key          *Field            `yaml:"key"`        // `shape: map` only: what each top-level key must be
 	Fields       Ordered[*Field]   `yaml:"fields"`
 	Resolved     map[string]*Field `yaml:"-"` // own fields, then singletons, then traits
 }
 
 func (t *Type) UnmarshalYAML(n *yaml.Node) error {
-	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "path", "files", "shape", "key", "fields"); err != nil {
+	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "path", "slug_scope", "files", "shape", "key", "fields"); err != nil {
 		return err
 	}
 	type plain Type
@@ -55,6 +56,9 @@ func (t *Type) UnmarshalYAML(n *yaml.Node) error {
 
 // Shapes are the values `shape:` takes. `fields` is the default.
 var Shapes = []string{"fields", "map", "list"}
+
+// SlugScopes are the values `slug_scope:` takes. `prefix` is the default.
+var SlugScopes = []string{"prefix", "directory"}
 
 // IsYAML is true for a doctype that governs plain YAML files rather than frontmatter.
 func (t *Type) IsYAML() bool { return t.Files != "" }
@@ -102,6 +106,9 @@ func (s *Schema) loadType(file string) error {
 		return err
 	}
 	if err := t.checkDirectory(rel); err != nil {
+		return err
+	}
+	if err := t.checkSlugScope(rel); err != nil {
 		return err
 	}
 	if err := s.checkFiles(t, rel); err != nil {
@@ -205,6 +212,22 @@ func (t *Type) checkDirectory(rel string) error {
 		if !declared[m[1]] {
 			return errf("%s: `%s: %s` fills `{%s}` from a field the doctype does not declare.", rel, key, pattern, m[1])
 		}
+	}
+	return nil
+}
+
+// checkSlugScope rejects a `slug_scope:` outside its values, or on a doctype with no
+// folder to scope it to.
+func (t *Type) checkSlugScope(rel string) error {
+	if t.SlugScope == "" {
+		t.SlugScope = "prefix"
+		return nil
+	}
+	if !slices.Contains(SlugScopes, t.SlugScope) {
+		return errf("%s: `slug_scope: %s`; it takes %s.", rel, t.SlugScope, strings.Join(SlugScopes, ", "))
+	}
+	if t.Directory == "" {
+		return errf("%s: `slug_scope:` scopes the slug check of `directory:` or `path:`; this doctype sets neither.", rel)
 	}
 	return nil
 }

@@ -12,12 +12,14 @@ import (
 
 // directory checks that a page sits in the folder its doctype's `directory:` names,
 // with each `{field}` filled from its frontmatter, and that no other page under the
-// pattern's fixed prefix shares its slug. A render names a page by slug alone, so an
+// pattern's fixed prefix shares its slug, or, with `slug_scope: directory`, none in the
+// resolved folder itself. A render names a page by slug alone, so an
 // ambiguous slug would resolve to whichever folder it found first.
 //
 // A placeholder whose field is optional and absent drops out of the path, so
 // `conventions/{kind}` puts a convention with no kind directly in conventions/.
-func (c *Checker) directory(path string, fm *value.Mapping, pattern string, required []string, add adder) {
+func (c *Checker) directory(path string, fm *value.Mapping, t *schema.Type, required []string, add adder) {
+	pattern := t.Directory
 	var parts, fields []string
 	for _, part := range strings.Split(pattern, "/") {
 		names := schema.Placeholder.FindAllStringSubmatch(part, -1)
@@ -48,8 +50,14 @@ func (c *Checker) directory(path string, fm *value.Mapping, pattern string, requ
 		return
 	}
 	base := filepath.Join(c.S.Base, filepath.FromSlash(schema.DirectoryPrefix(pattern)))
+	if t.SlugScope == "directory" {
+		base = want
+	}
 	var twins []string
 	for _, p := range c.pageStems(base)[stem] {
+		if t.SlugScope == "directory" && filepath.Dir(p) != want {
+			continue // only the folder itself; its subfolders hold other resolved directories
+		}
 		if p != path {
 			twins = append(twins, schema.Display(p))
 		}
