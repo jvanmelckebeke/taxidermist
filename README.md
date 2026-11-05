@@ -90,13 +90,13 @@ the first placeholder, searched recursively, so `collections/pose/x.md` and
 `collections/wardrobe/x.md` are both faults.
 
 A type file's `path:` names the filename as well, without `.md`. With
-`path: characters/{character}.{model}`, a page with `character: zoe` and
-`model: moss` must be `characters/zoe.moss.md`; any other filename is a `value`
+`path: people/{person}.{aspect}`, a page with `person: alice` and
+`aspect: work` must be `people/alice.work.md`; any other filename is a `value`
 fault naming both fields. The part before the last `/` is the page's `directory:`
 and follows its rules, so a type sets `path:` or `directory:`, never both. A
 placeholder in the filename part must name a required field (or a `required_when`
 one), because an absent field would leave the name unchecked. Quote a template that
-opens with a placeholder (`path: '{character}.{model}'`); one with no `/` checks
+opens with a placeholder (`path: '{person}.{aspect}'`); one with no `/` checks
 the filename in any folder.
 
 A field is described by these keys:
@@ -107,7 +107,7 @@ A field is described by these keys:
 | `definitions` | value → its meaning. The keys are the allowed values; there is no second list |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs, searched recursively, are the allowed values, so the list grows by adding a page. `reference: stories/*` takes the names of the folders directly under `stories/` that hold an `index.md` instead; the pages inside them are not values. `reference: gitea/repos.yaml`, a YAML file, takes that file's top-level keys |
-| `reference_type` | with a `reference:` to pages, the `type:` a page must declare to count. `reference: characters` with `reference_type: character` takes `zoe` but not `zoe.moss`, a `character-model` page in the same folder. Every item of a list is checked; for `<dir>/*` the folder's `index.md` gives the type |
+| `reference_type` | with a `reference:` to pages, the `type:` a page must declare to count. `reference: people` with `reference_type: person` takes `alice` but not `alice.work`, a `profile` page in the same folder. Every item of a list is checked; for `<dir>/*` the folder's `index.md` gives the type |
 | `pattern` | a regular expression every value, or every item of a list, must match |
 | `schema` | for `value: object`, the nested keys, each described the same way. For `value: map`, the keys of every value |
 | `key` | for `value: map`, what every key must be: a `pattern`, `vocabulary`, `definitions` or `reference` |
