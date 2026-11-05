@@ -1,0 +1,51 @@
+name: semver
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+    - id: next
+      env:
+        LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+      run: |
+        bumps=$(printf '%s\n' $LABELS | grep -E '^semver:(major|minor|patch)$' | sort -u || true)
+        case $(printf '%s' "$bumps" | grep -c .) in
+          0) echo "no semver label, no release"; exit 0 ;;
+          1) ;;
+          *) echo "::error::more than one semver label: $bumps"; exit 1 ;;
+        esac
+        last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+        IFS=. read -r major minor patch <<< "${last#v}"
+        case ${bumps#semver:} in
+          major) major=$((major + 1)); minor=0; patch=0 ;;
+          minor) minor=$((minor + 1)); patch=0 ;;
+          patch) patch=$((patch + 1)) ;;
+        esac
+        tag="v$major.$minor.$patch"
+        git tag "$tag"
+        git push origin "$tag"
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    # A tag pushed with GITHUB_TOKEN does not trigger release.yml, so call it here.
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
