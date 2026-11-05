@@ -181,6 +181,35 @@ func TestASlugIsUniqueUnderTheFixedPrefix(t *testing.T) {
 	}
 }
 
+// A convention keeps one file name at several depths:
+// conventions/prompting.md beside conventions/<model>/<kind>/prompting.md.
+func conventionTree(scope string) func(string) {
+	return func(dir string) {
+		put(dir, "taxonomy/types/convention.yaml", "traits: [core]\nrequired: [type, title]\noptional: [tags, model, kind]\n"+
+			"directory: notes/conventions/{model}/{kind}\n"+scope+"fields:\n  model: {value: str}\n  kind: {value: str}\n")
+		put(dir, "notes/conventions/a/x/prompting.md", "---\ntype: convention\ntitle: t\nmodel: a\nkind: x\n---\n")
+		put(dir, "notes/conventions/b/y/prompting.md", "---\ntype: convention\ntitle: t\nmodel: b\nkind: y\n---\n")
+	}
+}
+
+func convention(extra string) string { return "---\ntype: convention\ntitle: t\n" + extra + "---\n" }
+
+func TestSlugScopePrefixFaultsAShallowTwin(t *testing.T) {
+	for _, scope := range []string{"", "slug_scope: prefix\n"} {
+		expect(t, faults(t, "notes/conventions/prompting.md", convention(""), conventionTree(scope)), "value <slug>")
+		expect(t, faults(t, "notes/conventions/a/x/prompting.md", convention("model: a\nkind: x\n"), conventionTree(scope)), "value <slug>")
+	}
+}
+
+func TestSlugScopeDirectoryAllowsOneNameAtSeveralDepths(t *testing.T) {
+	tree := conventionTree("slug_scope: directory\n")
+	expect(t, faults(t, "notes/conventions/prompting.md", convention(""), tree))
+	expect(t, faults(t, "notes/conventions/a/x/prompting.md", convention("model: a\nkind: x\n"), tree))
+	expect(t, faults(t, "notes/conventions/b/y/prompting.md", convention("model: b\nkind: y\n"), tree))
+	// A misplaced page is faulted, and it collides in the folder it should be in.
+	expect(t, faults(t, "notes/conventions/b/prompting.md", convention("model: a\nkind: x\n"), tree), "value <slug>", "value model, kind")
+}
+
 func TestAReferenceReachesPagesInSubfolders(t *testing.T) {
 	carol := func(dir string) { put(dir, "people/team/carol.md", "---\ntype: person\ntitle: Carol\n---\n") }
 	expect(t, faults(t, "notes/x.md", note("people: [alice, carol]\n"), carol))

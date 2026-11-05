@@ -193,3 +193,22 @@ func TestAVocabularyReadsItsValuesFromADataFile(t *testing.T) {
 		t.Errorf("team = %+v", got)
 	}
 }
+
+func TestSlugScopeTakesKnownValuesAndNeedsAFolder(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	for _, c := range []struct {
+		body string
+		ok   bool
+	}{
+		{"required: [type]\ndirectory: notes\nslug_scope: directory\n", true},
+		{"required: [type]\ndirectory: notes\nslug_scope: prefix\n", true},
+		{"required: [type]\ndirectory: notes\nslug_scope: nope\n", false},
+		{"required: [type]\nslug_scope: directory\n", false},
+	} {
+		testutil.Write(t, tax, "types/scoped.yaml", c.body)
+		if _, err := schema.Load(tax); (err == nil) != c.ok {
+			t.Errorf("%q: err = %v", c.body, err)
+		}
+	}
+}

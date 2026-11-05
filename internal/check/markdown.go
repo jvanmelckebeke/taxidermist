@@ -30,7 +30,7 @@ func (c *Checker) markdownFile(path string, raw []byte, r *Result, add adder) {
 	}
 	required := c.fieldSet("", fm, t, c.exemptions(path), add)
 	if t.Directory != "" {
-		c.directory(path, fm, t.Directory, required, add)
+		c.directory(path, fm, t, required, add)
 	}
 	if t.Stem != "" {
 		c.stem(path, fm, t, add)
