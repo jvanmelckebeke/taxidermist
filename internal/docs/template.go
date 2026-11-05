@@ -69,7 +69,7 @@ func subKey(name string, k *schema.Field, req string) []string {
 		line += ": " + k.Guidance
 	}
 	if k.Reference != "" {
-		line += " Any " + refTarget(k.Reference) + ", checked."
+		line += " Any " + refTarget(k) + ", checked."
 	}
 	out := []string{line}
 	for _, d := range k.Enum() {

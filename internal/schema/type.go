@@ -25,6 +25,8 @@ type Type struct {
 	Optional     []string          `yaml:"optional"`
 	RequiredWhen []Condition       `yaml:"-"`
 	Directory    string            `yaml:"directory"` // where its pages live; `{field}` fills from the page
+	Path         string            `yaml:"path"`      // the page's path without `.md`, a template; sets Directory and Stem
+	Stem         string            `yaml:"-"`         // the filename part of Path, which a page's stem must equal once filled
 	Files        string            `yaml:"files"`     // a path glob naming the YAML files of this doctype
 	Shape        string            `yaml:"shape"`     // a YAML file's top level: fields, map or list
 	Key          *Field            `yaml:"key"`       // `shape: map` only: what each top-level key must be
@@ -33,7 +35,7 @@ type Type struct {
 }
 
 func (t *Type) UnmarshalYAML(n *yaml.Node) error {
-	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "files", "shape", "key", "fields"); err != nil {
+	if err := strict(n, "a type file", "type", "traits", "required", "optional", "required_when", "directory", "path", "files", "shape", "key", "fields"); err != nil {
 		return err
 	}
 	type plain Type
@@ -95,6 +97,9 @@ func (s *Schema) loadType(file string) error {
 	t.Resolved = map[string]*Field{}
 	if other, dup := s.Types[t.Doctype]; dup {
 		return errf("types/%s.yaml and %s both declare `type: %s`.", other.Slug, rel, t.Doctype)
+	}
+	if err := t.checkPath(rel); err != nil {
+		return err
 	}
 	if err := t.checkDirectory(rel); err != nil {
 		return err
@@ -188,15 +193,62 @@ func (t *Type) checkDirectory(rel string) error {
 	if strings.HasPrefix(t.Directory, "/") || strings.ContainsAny(t.Directory, "*?[") {
 		return errf("%s: `directory: %s` must be a relative path with no wildcard.", rel, t.Directory)
 	}
+	key, pattern := "directory", t.Directory
+	if t.Path != "" {
+		key, pattern = "path", t.Path
+	}
 	declared := t.Declared()
 	for _, c := range t.RequiredWhen {
 		declared[c.Field] = true
 	}
-	for _, m := range Placeholder.FindAllStringSubmatch(t.Directory, -1) {
+	for _, m := range Placeholder.FindAllStringSubmatch(pattern, -1) {
 		if !declared[m[1]] {
-			return errf("%s: `directory: %s` fills `{%s}` from a field the doctype does not declare.", rel, t.Directory, m[1])
+			return errf("%s: `%s: %s` fills `{%s}` from a field the doctype does not declare.", rel, key, pattern, m[1])
 		}
 	}
+	return nil
+}
+
+// checkPath splits a `path:` template into the directory rule and the stem template.
+// The stem may only name fields the page must carry, since an absent one would leave
+// the filename unchecked.
+func (t *Type) checkPath(rel string) error {
+	if t.Path == "" {
+		return nil
+	}
+	if t.Directory != "" {
+		return errf("%s: `path:` already names the directory; drop `directory:`.", rel)
+	}
+	if t.Files != "" {
+		return errf("%s: `path:` places markdown pages; a YAML doctype's place is its `files:` glob.", rel)
+	}
+	if strings.HasPrefix(t.Path, "/") || strings.ContainsAny(t.Path, "*?[") {
+		return errf("%s: `path: %s` must be a relative path with no wildcard.", rel, t.Path)
+	}
+	if strings.HasSuffix(t.Path, ".md") {
+		return errf("%s: `path: %s` names the page without its `.md`.", rel, t.Path)
+	}
+	dir, stem := "", t.Path
+	if i := strings.LastIndex(t.Path, "/"); i >= 0 {
+		dir, stem = t.Path[:i], t.Path[i+1:]
+	}
+	if stem == "" {
+		return errf("%s: `path: %s` ends in a folder; it needs a filename part.", rel, t.Path)
+	}
+	required := map[string]bool{}
+	for _, n := range t.Required {
+		required[n] = true
+	}
+	for _, c := range t.RequiredWhen {
+		required[c.Field] = true
+	}
+	for _, m := range Placeholder.FindAllStringSubmatch(stem, -1) {
+		if !required[m[1]] {
+			return errf("%s: `path: %s` fills `{%s}` in the filename from a field that is not required. "+
+				"An absent field would leave the filename unchecked.", rel, t.Path, m[1])
+		}
+	}
+	t.Directory, t.Stem = dir, stem
 	return nil
 }
 

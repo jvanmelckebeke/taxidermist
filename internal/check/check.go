@@ -7,8 +7,10 @@
 //	         misses its pattern, a reference naming no page or key, a YAML file no
 //	         doctype's `files:` matches, or two do, a field on a doctype it does not apply to, a value
 //	         that repeats the field its spec `excludes`, a page outside the folder
-//	         its doctype's `directory:` names, or a page whose slug another page
-//	         under that folder already uses
+//	         its doctype's `directory:` or `path:` names, a page whose filename
+//	         differs from its `path:` template filled from its frontmatter, a page
+//	         whose slug another page under that folder already uses, or a reference
+//	         to a page whose `type:` is not the field's `reference_type:`
 //	type     a value of the wrong type
 //	missing  a required field absent
 //	unknown  a key in neither the required nor the optional list: the one-off key
@@ -71,11 +73,12 @@ func (r *Result) Governed() int {
 type Checker struct {
 	S     *schema.Schema
 	refs  map[string]map[string]bool
+	types map[string]map[string][]string // a page reference -> value -> the `type:` of each page it names
 	stems map[string]map[string][]string // a directory -> page stem -> every page with it, recursively
 }
 
 func New(s *schema.Schema) *Checker {
-	return &Checker{S: s, refs: map[string]map[string]bool{}, stems: map[string]map[string][]string{}}
+	return &Checker{S: s, refs: map[string]map[string]bool{}, types: map[string]map[string][]string{}, stems: map[string]map[string][]string{}}
 }
 
 // Run checks each file.

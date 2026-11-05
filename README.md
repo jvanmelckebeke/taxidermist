@@ -65,7 +65,7 @@ taxonomy/
                          one per vocabulary under format/vocabularies/
 ```
 
-Paths in `scope.yaml`, `exempt.yaml`, `directory:`, `files:`, `from:` and
+Paths in `scope.yaml`, `exempt.yaml`, `directory:`, `path:`, `files:`, `from:` and
 `reference:` are relative to the taxonomy directory's parent. Nothing inside the
 taxonomy directory is checked, even under a root of `.`: it holds the schema and the
 generated `format/` pages.
@@ -89,6 +89,16 @@ filename stem, `index.md` aside, must also be unique under the part of the path 
 the first placeholder, searched recursively, so `collections/pose/x.md` and
 `collections/wardrobe/x.md` are both faults.
 
+A type file's `path:` names the filename as well, without `.md`. With
+`path: characters/{character}.{model}`, a page with `character: zoe` and
+`model: moss` must be `characters/zoe.moss.md`; any other filename is a `value`
+fault naming both fields. The part before the last `/` is the page's `directory:`
+and follows its rules, so a type sets `path:` or `directory:`, never both. A
+placeholder in the filename part must name a required field (or a `required_when`
+one), because an absent field would leave the name unchecked. Quote a template that
+opens with a placeholder (`path: '{character}.{model}'`); one with no `/` checks
+the filename in any folder.
+
 A field is described by these keys:
 
 | key | means |
@@ -97,6 +107,7 @@ A field is described by these keys:
 | `definitions` | value → its meaning. The keys are the allowed values; there is no second list |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs, searched recursively, are the allowed values, so the list grows by adding a page. `reference: stories/*` takes the names of the folders directly under `stories/` that hold an `index.md` instead; the pages inside them are not values. `reference: gitea/repos.yaml`, a YAML file, takes that file's top-level keys |
+| `reference_type` | with a `reference:` to pages, the `type:` a page must declare to count. `reference: characters` with `reference_type: character` takes `zoe` but not `zoe.moss`, a `character-model` page in the same folder. Every item of a list is checked; for `<dir>/*` the folder's `index.md` gives the type |
 | `pattern` | a regular expression every value, or every item of a list, must match |
 | `schema` | for `value: object`, the nested keys, each described the same way. For `value: map`, the keys of every value |
 | `key` | for `value: map`, what every key must be: a `pattern`, `vocabulary`, `definitions` or `reference` |
@@ -259,8 +270,9 @@ Every command takes `--taxonomy DIR` (default `taxonomy`). Exit codes: 0 clean,
 1 faults, 2 a usage or schema error.
 
 `check` reports seven kinds of fault: `value` (a value that isn't allowed, misses
-its `pattern`, or repeats the field its spec `excludes`, and a YAML file no doctype
-or two doctypes match), `type`, `missing` (a required field is absent), `unknown`
+its `pattern`, repeats the field its spec `excludes`, names a page of the wrong
+`reference_type`, or sits outside its `directory:` or `path:`, and a YAML file no
+doctype or two doctypes match), `type`, `missing` (a required field is absent), `unknown`
 (an undeclared key), `shape` (wrong keys inside an object or list item), `parse` (a
 block that opens and doesn't parse, which leaves the file invisible to every
 reader, or a YAML file that doesn't parse) and `segment` (a folder name off its

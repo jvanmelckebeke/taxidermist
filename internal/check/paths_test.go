@@ -252,3 +252,102 @@ func TestAFileRootGovernsThatFileAlone(t *testing.T) {
 		t.Errorf("faults %v", faults)
 	}
 }
+
+// A profile is one aspect of a person, named <person>.<aspect>.md under notes/profiles/.
+const profileType = `traits: [core]
+required: [type, title, person, aspect]
+optional: [tags]
+path: notes/profiles/{person}.{aspect}
+fields:
+  person: {value: str, reference: people, reference_type: person}
+  aspect: {value: str}
+`
+
+func withProfiles(dir string) {
+	put(dir, "taxonomy/types/profile.yaml", profileType)
+	put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
+}
+
+func profile(person, aspect string) string {
+	return "---\ntype: profile\ntitle: p\nperson: " + person + "\naspect: " + aspect + "\n---\n"
+}
+
+func TestAPathNamesTheFile(t *testing.T) {
+	expect(t, faults(t, "notes/profiles/alice.work.md", profile("alice", "work"), withProfiles))
+	expect(t, faults(t, "notes/profiles/alice.home.md", profile("alice", "work"), withProfiles), "value person, aspect")
+	expect(t, faults(t, "notes/profiles/bob.work.md", profile("alice", "work"), withProfiles), "value person, aspect")
+	expect(t, faults(t, "notes/profiles/alice.md", profile("alice", "work"), withProfiles), "value person, aspect")
+
+	f := checked(t, "notes/profiles/alice.home.md", profile("alice", "work"), withProfiles)
+	if len(f) != 1 || f[0].Value != "alice.home" ||
+		f[0].Why != "the file is alice.home.md but its frontmatter names it alice.work.md (`path: notes/profiles/{person}.{aspect}`)" {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAPathNamesTheDirectoryToo(t *testing.T) {
+	expect(t, faults(t, "notes/alice.work.md", profile("alice", "work"), withProfiles), "value directory")
+	expect(t, faults(t, "notes/profiles/old/alice.work.md", profile("alice", "work"), withProfiles), "value directory")
+}
+
+func TestAPathWithAMissingFieldIsOnlyMissing(t *testing.T) {
+	body := "---\ntype: profile\ntitle: p\nperson: alice\n---\n"
+	expect(t, faults(t, "notes/profiles/alice.work.md", body, withProfiles), "missing aspect")
+}
+
+func TestAPathWithNoFolderChecksTheStemAnywhere(t *testing.T) {
+	stemOnly := func(dir string) {
+		put(dir, "taxonomy/types/profile.yaml", strings.Replace(profileType, "notes/profiles/{person}.{aspect}", "'{person}.{aspect}'", 1))
+		put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
+	}
+	expect(t, faults(t, "notes/alice.work.md", profile("alice", "work"), stemOnly))
+	expect(t, faults(t, "notes/deep/alice.work.md", profile("alice", "work"), stemOnly))
+	expect(t, faults(t, "notes/alice.home.md", profile("alice", "work"), stemOnly), "value person, aspect")
+}
+
+func TestAReferenceTypeRestrictsThePagesItTakes(t *testing.T) {
+	expect(t, faults(t, "notes/profiles/alice.work.md", profile("alice", "work"), withProfiles))
+	// standup is a page under people/, but a meeting.
+	expect(t, faults(t, "notes/profiles/standup.work.md", profile("standup", "work"), withProfiles), "value person")
+	// A name that is no page at all keeps its own fault.
+	expect(t, faults(t, "notes/profiles/nobody.work.md", profile("nobody", "work"), withProfiles), "value person")
+
+	f := checked(t, "notes/profiles/standup.work.md", profile("standup", "work"), withProfiles)
+	if len(f) != 1 || f[0].Why != "the page is `meeting`; this field takes only `person` pages" {
+		t.Errorf("faults = %+v", f)
+	}
+	f = checked(t, "notes/profiles/nobody.work.md", profile("nobody", "work"), withProfiles)
+	if len(f) != 1 || !strings.HasPrefix(f[0].Why, "no page at ") {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAReferenceTypeChecksEveryItemOfAList(t *testing.T) {
+	typed := func(dir string) {
+		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		b, _ := os.ReadFile(p)
+		put(dir, "taxonomy/singletons.yaml", strings.Replace(string(b), "reference: people\n", "reference: people\n    reference_type: person\n", 1))
+		put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
+		put(dir, "people/team/untyped.md", "# no frontmatter\n")
+	}
+	expect(t, faults(t, "notes/x.md", note("people: [alice, bob]\n"), typed))
+	expect(t, faults(t, "notes/x.md", note("people: [alice, standup, untyped]\n"), typed), "value people[1]", "value people[2]")
+
+	f := checked(t, "notes/x.md", note("people: [untyped]\n"), typed)
+	if len(f) != 1 || f[0].Why != "the page is `no type`; this field takes only `person` pages" {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAReferenceTypeOnADirectoryReferenceReadsTheIndex(t *testing.T) {
+	typed := func(dir string) {
+		withProject(dir)
+		p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+		b, _ := os.ReadFile(p)
+		put(dir, "taxonomy/types/note.yaml", strings.Replace(string(b), "reference: projects/*\n", "reference: projects/*\n    reference_type: Project Plan\n", 1))
+		put(dir, "projects/hiring/index.md", "---\ntype: Project Plan\ntitle: Hiring\ntopic: hiring\n---\n")
+	}
+	expect(t, faults(t, "notes/x.md", note("project: hiring\n"), typed))
+	// infra/index.md has no frontmatter, so no type.
+	expect(t, faults(t, "notes/x.md", note("project: infra\n"), typed), "value project")
+}
