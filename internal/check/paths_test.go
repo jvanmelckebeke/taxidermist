@@ -45,7 +45,7 @@ func run(t *testing.T, rel, body string) *Result {
 	t.Helper()
 	dir := testutil.CopyExample(t)
 	p := testutil.Write(t, dir, rel, body)
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +70,11 @@ func TestAListFieldAgreesWhenItHoldsTheFolder(t *testing.T) {
 	edit := func(body string) *Result {
 		t.Helper()
 		dir := testutil.CopyExample(t)
-		scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+		scope := filepath.Join(dir, ".taxidermist.yaml")
 		b, _ := os.ReadFile(scope)
 		os.WriteFile(scope, []byte(strings.Replace(string(b), "field: topic", "field: tags", 1)), 0o644)
 		p := testutil.Write(t, dir, "projects/infra/x.md", body)
-		s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+		s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +94,7 @@ func TestAListFieldAgreesWhenItHoldsTheFolder(t *testing.T) {
 }
 
 func TestFacetsListValuesWithNoFolder(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ fields:
 `
 
 func withRecipes(dir string) {
-	put(dir, "taxonomy/types/recipe.yaml", recipeType)
+	put(dir, ".taxidermist/types/recipe.yaml", recipeType)
 }
 
 func recipe(extra string) string { return "---\ntype: recipe\ntitle: r\n" + extra + "---\n" }
@@ -157,7 +157,7 @@ func TestARequiredAbsentPlaceholderIsOnlyMissing(t *testing.T) {
 
 func TestADirectoryWithNoPlaceholder(t *testing.T) {
 	fixed := func(dir string) {
-		put(dir, "taxonomy/types/recipe.yaml", strings.Replace(recipeType, "/{kind}", "", 1))
+		put(dir, ".taxidermist/types/recipe.yaml", strings.Replace(recipeType, "/{kind}", "", 1))
 	}
 	expect(t, faults(t, "notes/recipes/x.md", recipe("kind: soup\n"), fixed))
 	expect(t, faults(t, "notes/recipes/soup/x.md", recipe("kind: soup\n"), fixed), "value directory")
@@ -185,7 +185,7 @@ func TestASlugIsUniqueUnderTheFixedPrefix(t *testing.T) {
 // conventions/prompting.md beside conventions/<model>/<kind>/prompting.md.
 func conventionTree(scope string) func(string) {
 	return func(dir string) {
-		put(dir, "taxonomy/types/convention.yaml", "traits: [core]\nrequired: [type, title]\noptional: [tags, model, kind]\n"+
+		put(dir, ".taxidermist/types/convention.yaml", "traits: [core]\nrequired: [type, title]\noptional: [tags, model, kind]\n"+
 			"directory: notes/conventions/{model}/{kind}\n"+scope+"fields:\n  model: {value: str}\n  kind: {value: str}\n")
 		put(dir, "notes/conventions/a/x/prompting.md", "---\ntype: convention\ntitle: t\nmodel: a\nkind: x\n---\n")
 		put(dir, "notes/conventions/b/y/prompting.md", "---\ntype: convention\ntitle: t\nmodel: b\nkind: y\n---\n")
@@ -218,11 +218,11 @@ func TestAReferenceReachesPagesInSubfolders(t *testing.T) {
 
 // withProject gives a note a `project:` naming a folder under projects/.
 func withProject(dir string) {
-	p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+	p := filepath.Join(dir, ".taxidermist", "types", "note.yaml")
 	b, _ := os.ReadFile(p)
 	b = []byte(strings.Replace(string(b), "optional:\n", "optional:\n- project\n", 1))
 	b = []byte(strings.Replace(string(b), "fields:\n", "fields:\n  project:\n    value: str\n    reference: projects/*\n", 1))
-	put(dir, "taxonomy/types/note.yaml", string(b))
+	put(dir, ".taxidermist/types/note.yaml", string(b))
 	put(dir, "projects/infra/index.md", "# infra\n")
 	put(dir, "projects/garden/plan.md", "# no index\n")
 }
@@ -253,12 +253,12 @@ func put(dir, rel, body string) {
 
 func TestAFileRootGovernsThatFileAlone(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	testutil.Write(t, dir, "taxonomy/scope.yaml", "roots:\n- notes/kept.md\n- config/site.yaml\n- config/teams.yaml\n")
+	testutil.Write(t, dir, ".taxidermist.yaml", "roots:\n- notes/kept.md\n- config/site.yaml\n- config/teams.yaml\n")
 	kept := testutil.Write(t, dir, "notes/kept.md", goodNote)
 	beside := testutil.Write(t, dir, "notes/beside.md", "---\ntype: nothing\n---\n")
 	site := filepath.Join(dir, "config", "site.yaml")
 	other := testutil.Write(t, dir, "config/other.yaml", "a: 1\n")
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ fields:
 `
 
 func withProfiles(dir string) {
-	put(dir, "taxonomy/types/profile.yaml", profileType)
+	put(dir, ".taxidermist/types/profile.yaml", profileType)
 	put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
 }
 
@@ -326,7 +326,7 @@ func TestAPathWithAMissingFieldIsOnlyMissing(t *testing.T) {
 
 func TestAPathWithNoFolderChecksTheStemAnywhere(t *testing.T) {
 	stemOnly := func(dir string) {
-		put(dir, "taxonomy/types/profile.yaml", strings.Replace(profileType, "notes/profiles/{person}.{aspect}", "'{person}.{aspect}'", 1))
+		put(dir, ".taxidermist/types/profile.yaml", strings.Replace(profileType, "notes/profiles/{person}.{aspect}", "'{person}.{aspect}'", 1))
 		put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
 	}
 	expect(t, faults(t, "notes/alice.work.md", profile("alice", "work"), stemOnly))
@@ -353,9 +353,9 @@ func TestAReferenceTypeRestrictsThePagesItTakes(t *testing.T) {
 
 func TestAReferenceTypeChecksEveryItemOfAList(t *testing.T) {
 	typed := func(dir string) {
-		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		p := filepath.Join(dir, ".taxidermist", "singletons.yaml")
 		b, _ := os.ReadFile(p)
-		put(dir, "taxonomy/singletons.yaml", strings.Replace(string(b), "reference: people\n", "reference: people\n    reference_type: person\n", 1))
+		put(dir, ".taxidermist/singletons.yaml", strings.Replace(string(b), "reference: people\n", "reference: people\n    reference_type: person\n", 1))
 		put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\n---\n")
 		put(dir, "people/team/untyped.md", "# no frontmatter\n")
 	}
@@ -371,9 +371,9 @@ func TestAReferenceTypeChecksEveryItemOfAList(t *testing.T) {
 func TestAReferenceTypeOnADirectoryReferenceReadsTheIndex(t *testing.T) {
 	typed := func(dir string) {
 		withProject(dir)
-		p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+		p := filepath.Join(dir, ".taxidermist", "types", "note.yaml")
 		b, _ := os.ReadFile(p)
-		put(dir, "taxonomy/types/note.yaml", strings.Replace(string(b), "reference: projects/*\n", "reference: projects/*\n    reference_type: Project Plan\n", 1))
+		put(dir, ".taxidermist/types/note.yaml", strings.Replace(string(b), "reference: projects/*\n", "reference: projects/*\n    reference_type: Project Plan\n", 1))
 		put(dir, "projects/hiring/index.md", "---\ntype: Project Plan\ntitle: Hiring\ntopic: hiring\n---\n")
 	}
 	expect(t, faults(t, "notes/x.md", note("project: hiring\n"), typed))

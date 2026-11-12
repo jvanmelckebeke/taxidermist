@@ -95,7 +95,7 @@ func TestHook(t *testing.T) {
 	}
 	gitIn(t, dir, "reset", "-q", "--hard")
 
-	p := "taxonomy/types/person.yaml"
+	p := ".taxidermist/types/person.yaml"
 	b, _ = os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "How you know them.", "How you met.", 1)), 0o644)
 	gitIn(t, dir, "add", p)
@@ -105,7 +105,7 @@ func TestHook(t *testing.T) {
 	if code, _, errs := run(t, "docs"); code != 0 {
 		t.Fatal(errs)
 	}
-	gitIn(t, dir, "add", "taxonomy")
+	gitIn(t, dir, "add", ".taxidermist")
 	if code, _, errs := run(t, "hook"); code != 0 {
 		t.Fatalf("after docs: exit %d\n%s", code, errs)
 	}
@@ -164,7 +164,7 @@ func TestDashDashEndsFlags(t *testing.T) {
 		testutil.Write(t, dir, "notes/"+n, "---\ntype: note\ntitle: t\ntopic: nope\ndate: 2026-01-01\n---\n")
 	}
 	t.Chdir(filepath.Join(dir, "notes"))
-	code, out, errs := run(t, "check", "--taxonomy", "../taxonomy", "--json", "--", "-a.md", "-b.md")
+	code, out, errs := run(t, "check", "--taxonomy", "../.taxidermist", "--json", "--", "-a.md", "-b.md")
 	if code != 1 || strings.Count(out, `"value": "nope"`) != 2 {
 		t.Errorf("exit %d\n%s%s", code, out, errs)
 	}
@@ -218,7 +218,7 @@ func TestHintsNameTheRepoInvocation(t *testing.T) {
 	}
 	dir := testutil.CopyExample(t)
 	t.Chdir(dir)
-	scope := "taxonomy/scope.yaml"
+	scope := ".taxidermist.yaml"
 	b, _ := os.ReadFile(scope)
 	os.WriteFile(scope, []byte(string(b)+"invocation: bin/tax {command}\n"), 0o644)
 	run(t, "docs")
@@ -229,11 +229,14 @@ func TestHintsNameTheRepoInvocation(t *testing.T) {
 	gitIn(t, dir, "init", "-q")
 	gitIn(t, dir, "add", "-A")
 	gitIn(t, dir, "commit", "-qm", "init")
-	p := "taxonomy/types/person.yaml"
+	p := ".taxidermist/types/person.yaml"
 	b, _ = os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "How you know them.", "How you met.", 1)), 0o644)
 	gitIn(t, dir, "add", p)
-	if _, _, errs := run(t, "hook"); !strings.Contains(errs, "  -> bin/tax docs --taxonomy taxonomy   then re-stage") {
+	if _, _, errs := run(t, "hook"); !strings.Contains(errs, "  -> bin/tax docs   then re-stage") {
 		t.Errorf("hook hint:\n%s", errs)
+	}
+	if _, _, errs := run(t, "hook", "--taxonomy", ".taxidermist"); !strings.Contains(errs, "  -> bin/tax docs --taxonomy .taxidermist   then re-stage") {
+		t.Errorf("hook hint with the flag:\n%s", errs)
 	}
 }

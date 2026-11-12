@@ -1,4 +1,4 @@
-"""Check markdown frontmatter, and plain YAML files, against a taxonomy directory.
+"""Check markdown frontmatter, and plain YAML files, against a taxidermist schema.
 
 This package runs the taxidermist binary with ``check --json`` and returns its
 output as dataclasses. It finds the binary in ``$TAXIDERMIST_BIN``, then on PATH.
@@ -102,17 +102,20 @@ def _check_version(path: str) -> None:
         raise BinaryTooOld(f"{path} is taxidermist {have}; this package needs {want} or later")
 
 
-def validate(*paths: str | os.PathLike[str], taxonomy: str | os.PathLike[str] = "taxonomy") -> Result:
+def validate(*paths: str | os.PathLike[str], taxonomy: str | os.PathLike[str] | None = None) -> Result:
     """Check markdown and YAML files on disk, as ``taxidermist check FILE...`` does.
 
     With no paths it checks every governed root. A path that is not markdown or YAML,
-    does not exist, or sits outside the roots in scope.yaml is skipped.
+    does not exist, or sits outside the roots in .taxidermist.yaml is skipped.
+
+    ``taxonomy`` is the schema folder. Left as None, the binary finds it through
+    ``.taxidermist.yaml`` in the working directory.
     """
     return _run(["--", *(os.fspath(p) for p in paths)], taxonomy, None)
 
 
 def validate_content(
-    content: str | bytes, path: str | os.PathLike[str], *, taxonomy: str | os.PathLike[str] = "taxonomy"
+    content: str | bytes, path: str | os.PathLike[str], *, taxonomy: str | os.PathLike[str] | None = None
 ) -> Result:
     """Check ``content`` as if it were the markdown or YAML file at ``path``.
 
@@ -124,8 +127,9 @@ def validate_content(
     return _run(["--stdin-filename", os.fspath(path)], taxonomy, data)
 
 
-def _run(args: list[str], taxonomy: str | os.PathLike[str], stdin: bytes | None) -> Result:
-    cmd = [find_binary(), "check", "--json", "--taxonomy", os.fspath(taxonomy), *args]
+def _run(args: list[str], taxonomy: str | os.PathLike[str] | None, stdin: bytes | None) -> Result:
+    flag = [] if taxonomy is None else ["--taxonomy", os.fspath(taxonomy)]
+    cmd = [find_binary(), "check", "--json", *flag, *args]
     proc = subprocess.run(cmd, input=stdin, capture_output=True)
     if proc.returncode not in (0, 1):
         raise TaxidermistError(proc.stderr.decode(errors="replace").strip() or f"exit {proc.returncode}")

@@ -22,7 +22,9 @@ type Taxonomy struct {
 	s *schema.Schema
 }
 
-// Load reads a taxonomy directory: scope.yaml, the types/ files and the rest. An
+// Load reads a schema folder and the .taxidermist.yaml beside it, or with dir empty
+// the one the working directory's config names. A 0.x schema keeps its scope.yaml
+// inside the folder until 1.0. The types/ files and the rest load with it. An
 // error means the schema itself is broken and nothing can be checked against it.
 func Load(dir string) (*Taxonomy, error) {
 	s, err := schema.Load(dir)
@@ -34,8 +36,8 @@ func Load(dir string) (*Taxonomy, error) {
 
 // Validate checks files on disk the way `taxidermist check FILE...` does. With no
 // paths it checks every governed root. A path that is not markdown or YAML, does not
-// exist, or sits outside the roots scope.yaml governs is skipped, so a caller can pass
-// any list of files and scope.yaml decides which ones count. A YAML file counts once
+// exist, or sits outside the roots the config governs is skipped, so a caller can pass
+// any list of files and the config decides which ones count. A YAML file counts once
 // some doctype has `files:`.
 func (t *Taxonomy) Validate(paths ...string) (*Result, error) {
 	files, err := check.Files(t.s, paths)
@@ -67,7 +69,7 @@ type Result struct {
 	// Warnings never fail a check.
 	Warnings []Finding `json:"warnings"`
 	// Ungoverned maps a doctype that has no types/ file to the files that carry it,
-	// when scope.yaml says `ungoverned: report`.
+	// when the config says `ungoverned: report`.
 	Ungoverned map[string][]string `json:"ungoverned"`
 }
 

@@ -84,7 +84,7 @@ func vocabularyPage(s *schema.Schema, name string) string {
 	L := []string{"# Vocabulary `" + name + "`", "", banner(s), ""}
 	v := s.Vocabularies[name]
 	if src := v.Source; src != nil {
-		line := "Read from [`" + src.From + "`](../../../" + src.From + "): "
+		line := "Read from [`" + src.From + "`](" + toBase(s, 1, src.From) + "): "
 		if src.At != "" {
 			line += "the keys of `" + src.At + "`"
 		} else {
@@ -95,7 +95,7 @@ func vocabularyPage(s *schema.Schema, name string) string {
 		}
 		L = append(L, line+". A value is added there, not here.", "")
 	} else {
-		L = append(L, "Defined in [../../vocabularies/"+name+".yaml](../../vocabularies/"+name+".yaml).", "")
+		L = append(L, "Defined in ["+toSchema(s, 1, "vocabularies/"+name+".yaml")+"]("+toSchema(s, 1, "vocabularies/"+name+".yaml")+").", "")
 	}
 	enum := v.Defs
 	if hasMeanings(enum) {

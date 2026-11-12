@@ -83,7 +83,7 @@ def test_content_outside_the_roots(kb):
 
 
 def test_broken_taxonomy(kb):
-    (kb / "taxonomy" / "types" / "note.yaml").write_text("required: [\n")
+    (kb / ".taxidermist" / "types" / "note.yaml").write_text("required: [\n")
     with pytest.raises(TaxidermistError, match="note.yaml"):
         taxidermist.validate()
 

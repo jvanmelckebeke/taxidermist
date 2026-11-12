@@ -13,7 +13,7 @@ import (
 func rules(t *testing.T, edit func(tax string)) []string {
 	t.Helper()
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	if edit != nil {
 		edit(tax)
 	}
@@ -79,10 +79,10 @@ func TestEachRuleFires(t *testing.T) {
 			appendTo(t, filepath.Join(tax, "singletons.yaml"), "  tags:\n    value: list\n    applies_to: []\n    guidance: g\n")
 		},
 		"segment-path": func(tax string) {
-			replaceIn(t, filepath.Join(tax, "scope.yaml"), "- path: projects/*", "- path: projets/*")
+			replaceIn(t, filepath.Join(filepath.Dir(tax), ".taxidermist.yaml"), "- path: projects/*", "- path: projets/*")
 		},
 		"segment-field": func(tax string) {
-			replaceIn(t, filepath.Join(tax, "scope.yaml"), "field: topic", "field: topik")
+			replaceIn(t, filepath.Join(filepath.Dir(tax), ".taxidermist.yaml"), "field: topic", "field: topik")
 		},
 		"excludes-declared": func(tax string) {
 			// tags is on every doctype through core, topic only on note and Project Plan.
@@ -90,6 +90,9 @@ func TestEachRuleFires(t *testing.T) {
 		},
 		"files-under-root": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "types", "site.yaml"), "files: config/site.yaml", "files: elsewhere/site.yaml")
+		},
+		"docs-folder-generated": func(tax string) {
+			testutil.Write(t, tax, "format/mine.md", "# by hand\n")
 		},
 		"files-one-type": func(tax string) {
 			replaceIn(t, filepath.Join(tax, "types", "site.yaml"), "files: config/site.yaml", "files: config/*.yaml")
@@ -115,7 +118,7 @@ func TestEachRuleFires(t *testing.T) {
 
 func TestASegmentOutsideTheRootsIsFlagged(t *testing.T) {
 	got := rules(t, func(tax string) {
-		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- meetings\n- projects\n", "- meetings\n")
+		replaceIn(t, filepath.Join(filepath.Dir(tax), ".taxidermist.yaml"), "- meetings\n- projects\n", "- meetings\n")
 	})
 	if len(got) != 1 || got[0] != "segment-path" {
 		t.Errorf("rules fired %v", got)
@@ -133,7 +136,7 @@ func TestExcludesOnANestedKeyIsFlagged(t *testing.T) {
 
 func TestARootOfDotHoldsEverything(t *testing.T) {
 	got := rules(t, func(tax string) {
-		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- notes\n- people\n- meetings\n- projects\n- config\n", "- .\n")
+		replaceIn(t, filepath.Join(filepath.Dir(tax), ".taxidermist.yaml"), "- notes\n- people\n- meetings\n- projects\n- config\n", "- .\n")
 	})
 	if len(got) > 0 {
 		t.Errorf("rules fired %v", got)
@@ -142,7 +145,7 @@ func TestARootOfDotHoldsEverything(t *testing.T) {
 
 func TestAFileRootReachesTheDoctypeWhoseFilesItIs(t *testing.T) {
 	got := rules(t, func(tax string) {
-		replaceIn(t, filepath.Join(tax, "scope.yaml"), "- config\n", "- config/site.yaml\n- config/teams.yaml\n- config/rota.yaml\n")
+		replaceIn(t, filepath.Join(filepath.Dir(tax), ".taxidermist.yaml"), "- config\n", "- config/site.yaml\n- config/teams.yaml\n- config/rota.yaml\n")
 	})
 	if len(got) > 0 {
 		t.Errorf("rules fired %v", got)

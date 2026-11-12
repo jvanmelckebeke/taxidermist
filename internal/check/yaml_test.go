@@ -24,7 +24,7 @@ func TestAYAMLFileNoDoctypeClaimsIsNoFault(t *testing.T) {
 	dir := testutil.CopyExample(t)
 	testutil.Write(t, dir, "notes/garden/plan.yaml", "beds: 3\n")
 	testutil.Write(t, dir, "projects/infra/deploy.yml", "- step: build\n")
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,12 +62,12 @@ func TestAPatternChecksEveryScalar(t *testing.T) {
 	expect(t, faults(t, "config/site.yaml", "name: n\ntimezone: Europe/Brussels\n"))
 	expect(t, faults(t, "config/site.yaml", "name: n\ntimezone: tomorrow\n"), "value timezone")
 	expect(t, faults(t, "notes/x.md", note(""), func(dir string) {
-		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		p := filepath.Join(dir, ".taxidermist", "singletons.yaml")
 		b, _ := os.ReadFile(p)
 		os.WriteFile(p, []byte(strings.Replace(string(b), "    vocabulary: topic\n", "    vocabulary: topic\n    pattern: '^h'\n", 1)), 0o644)
 	}))
 	expect(t, faults(t, "notes/x.md", strings.Replace(goodNote, "topic: hiring", "topic: infra", 1), func(dir string) {
-		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		p := filepath.Join(dir, ".taxidermist", "singletons.yaml")
 		b, _ := os.ReadFile(p)
 		os.WriteFile(p, []byte(strings.Replace(string(b), "    vocabulary: topic\n", "    vocabulary: topic\n    pattern: '^h'\n", 1)), 0o644)
 	}), "value topic")
@@ -81,7 +81,7 @@ func TestAMapFieldChecksItsKeysAndValues(t *testing.T) {
 
 func TestAMapFieldWithASchemaChecksEachValuesKeys(t *testing.T) {
 	edit := func(dir string) {
-		testutil.Write(t, dir, "taxonomy/types/site.yaml", "files: config/site.yaml\nrequired: [topics]\nfields:\n"+
+		testutil.Write(t, dir, ".taxidermist/types/site.yaml", "files: config/site.yaml\nrequired: [topics]\nfields:\n"+
 			"  topics:\n    value: map\n    schema:\n      meaning: {value: str, required: true, guidance: g}\n    guidance: g\n")
 	}
 	expect(t, faults(t, "config/site.yaml", "topics:\n  a: {meaning: m}\n", edit))
@@ -98,34 +98,34 @@ func TestAReferenceToAYAMLFileTakesItsTopLevelKeys(t *testing.T) {
 
 func TestTwoDoctypesMatchingOneFileIsAFault(t *testing.T) {
 	expect(t, faults(t, "config/site.yaml", "name: n\ntimezone: Europe/Brussels\n", func(dir string) {
-		testutil.Write(t, dir, "taxonomy/types/everything.yaml", "files: config/*.yaml\n")
+		testutil.Write(t, dir, ".taxidermist/types/everything.yaml", "files: config/*.yaml\n")
 	}), "value <file>")
 }
 
 func TestYAMLIsLeftAloneUntilADoctypeHasFiles(t *testing.T) {
 	expect(t, faults(t, "config/stray.yaml", "a: 1\n", func(dir string) {
 		for _, f := range []string{"site", "team", "rota-week"} {
-			os.Remove(filepath.Join(dir, "taxonomy", "types", f+".yaml"))
+			os.Remove(filepath.Join(dir, ".taxidermist", "types", f+".yaml"))
 		}
-		os.Remove(filepath.Join(dir, "taxonomy", "vocabularies", "team.yaml"))
+		os.Remove(filepath.Join(dir, ".taxidermist", "vocabularies", "team.yaml"))
 	}))
 }
 
 // noTeamVocabulary drops the vocabulary read from config/teams.yaml, so a test can
 // break that file's shape without breaking the schema load.
 func noTeamVocabulary(dir string) {
-	os.Remove(filepath.Join(dir, "taxonomy", "vocabularies", "team.yaml"))
-	p := filepath.Join(dir, "taxonomy", "types", "site.yaml")
+	os.Remove(filepath.Join(dir, ".taxidermist", "vocabularies", "team.yaml"))
+	p := filepath.Join(dir, ".taxidermist", "types", "site.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "    vocabulary: team\n", "", 1)), 0o644)
 }
 
 func TestTheTaxonomysOwnYAMLIsNotChecked(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+	scope := filepath.Join(dir, ".taxidermist.yaml")
 	b, _ := os.ReadFile(scope)
-	os.WriteFile(scope, []byte(strings.Replace(string(b), "- config\n", "- config\n- taxonomy\n", 1)), 0o644)
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	os.WriteFile(scope, []byte(strings.Replace(string(b), "- config\n", "- config\n- .taxidermist\n", 1)), 0o644)
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,11 +137,11 @@ func TestTheTaxonomysOwnYAMLIsNotChecked(t *testing.T) {
 
 func TestUngovernedYAMLIsTalliedInReportMode(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+	scope := filepath.Join(dir, ".taxidermist.yaml")
 	b, _ := os.ReadFile(scope)
 	os.WriteFile(scope, []byte(strings.Replace(string(b), "ungoverned: error", "ungoverned: report", 1)), 0o644)
 	p := testutil.Write(t, dir, "config/stray.yaml", "a: 1\n")
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestAPageCannotTakeAYAMLDoctype(t *testing.T) {
 }
 
 func TestFacetsCountYAMLEntries(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestFacetsCountYAMLEntries(t *testing.T) {
 func TestFacetsKeepABlockScalarOnOneLine(t *testing.T) {
 	dir := testutil.CopyExample(t)
 	testutil.Write(t, dir, "config/site.yaml", "name: |\n  two\n  lines\ntimezone: Europe/Brussels\n")
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}

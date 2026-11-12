@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/jvanmelckebeke/taxidermist/internal/docs"
@@ -19,17 +19,18 @@ var Version = "dev"
 
 const usage = `taxidermist: keep markdown frontmatter and YAML files to a declared schema.
 
-The schema is a taxonomy directory (default ./taxonomy): scope.yaml, traits.yaml,
-singletons.yaml, exempt.yaml, vocabularies/ and one types/<doctype>.yaml per doctype.
+The config is .taxidermist.yaml in the working directory. It names the schema folder
+(default ./.taxidermist: traits.yaml, singletons.yaml, exempt.yaml, vocabularies/ and one
+types/<doctype>.yaml per doctype) and the folder the generated docs go to.
 
 Usage:
   taxidermist check [FILE ...]   check frontmatter and YAML files against the schema (default: every governed root)
-  taxidermist docs [--check]     generate taxonomy/format/, one how-to page per doctype
+  taxidermist docs [--check]     generate the docs folder, one how-to page per doctype
   taxidermist lint               check the schema against its own invariants
   taxidermist hook               the pre-commit gate: docs --check and check, on staged files
   taxidermist version
 
-Every command takes --taxonomy DIR. Run "taxidermist <command> -h" for its flags.
+Every command takes --taxonomy DIR, the schema folder; its config is the .taxidermist.yaml beside it. Run "taxidermist <command> -h" for its flags.
 `
 
 // Run executes one command and returns the exit code: 0 clean, 1 faults, 2 a usage
@@ -63,7 +64,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func newFlags(name, summary string, stderr io.Writer) (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	tax := fs.String("taxonomy", "taxonomy", "the taxonomy directory")
+	tax := fs.String("taxonomy", "", "the schema folder; default: found through .taxidermist.yaml in the working directory")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "%s\n\nFlags:\n", summary)
 		fs.PrintDefaults()
@@ -97,6 +98,9 @@ func load(dir string, stderr io.Writer) (*schema.Schema, bool) {
 		fmt.Fprintln(stderr, err)
 		return nil, false
 	}
+	if s.Legacy {
+		fmt.Fprintf(stderr, "%s is the old layout; see the README's Config file section\n", schema.Display(s.Config))
+	}
 	return s, true
 }
 
@@ -110,11 +114,12 @@ func flagExit(err error) int {
 func runDocs(args []string, stdout, stderr io.Writer) int {
 	fs, tax := newFlags("docs", `taxidermist docs [--check]
 
-Generate <taxonomy>/format/: one page per doctype with a fill-in template, every
+Generate the docs folder (.taxidermist.yaml's `+"`docs:`"+`, default <taxonomy>/format/): one page per doctype with a fill-in template, every
 field's guidance and every vocabulary it uses, one page per vocabulary under
 vocabularies/, plus a README index. The index opens
 with <taxonomy>/`+docs.HouseRules+` when that file exists. Pages no doctype generates
-are deleted.`, stderr)
+are deleted. A folder holding a .md that lacks the GENERATED banner is refused.
+With --check and no docs folder on disk, nothing is stale.`, stderr)
 	chk := fs.Bool("check", false, "exit 1 if any page is stale; write nothing")
 	if _, err := parse(fs, args); err != nil {
 		return flagExit(err)
@@ -127,13 +132,18 @@ are deleted.`, stderr)
 }
 
 func docsSync(s *schema.Schema, chk bool, stdout, stderr io.Writer) int {
+	if _, err := os.Stat(s.DocsDir); err != nil && chk {
+		fmt.Fprintf(stdout, "%s: not generated\n", schema.Display(s.DocsDir))
+		return 0
+	}
 	stale, written, total, err := docs.Sync(s, chk)
 	if err != nil {
 		fmt.Fprintln(stderr, "taxidermist:", err)
 		return 2
 	}
-	out := schema.Display(filepath.Join(s.Dir, "format"))
+	out := schema.Display(s.DocsDir)
 	if chk {
+
 		if len(stale) > 0 {
 			fmt.Fprintf(stderr, "%s is stale vs the schema:\n", out)
 			for _, p := range stale {

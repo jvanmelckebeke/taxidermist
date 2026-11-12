@@ -17,7 +17,7 @@ func segmentRules(s *schema.Schema, add adder) {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			add("segment-path", "segment `%s`: %s does not exist", sg.Path, sg.Dir)
 		} else if !underRoot(s, sg.Dir) {
-			add("segment-path", "segment `%s` is under no root in scope.yaml, so check never reaches it", sg.Path)
+			add("segment-path", "segment `%s` is under no root in the config, so check never reaches it", sg.Path)
 		}
 		if sg.Field != "" && len(s.Owners[sg.Field]) == 0 {
 			add("segment-field", "segment `%s` names field `%s`, which no doctype declares", sg.Path, sg.Field)
@@ -32,7 +32,7 @@ func filesUnderRoot(s *schema.Schema, add adder) {
 	for _, dt := range doctypes {
 		t := s.Types[dt]
 		if t.IsYAML() && !underRoot(s, globDir(t.Files)) && !matchesRoot(s, t.Files) {
-			add("files-under-root", "`%s`: `files: %s` is under no root in scope.yaml, so check never reaches it", dt, t.Files)
+			add("files-under-root", "`%s`: `files: %s` is under no root in the config, so check never reaches it", dt, t.Files)
 		}
 	}
 }

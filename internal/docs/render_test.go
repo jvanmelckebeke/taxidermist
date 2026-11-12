@@ -11,7 +11,7 @@ import (
 )
 
 func TestPageContent(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestPageContent(t *testing.T) {
 
 func TestAListWithAVocabularyRendersAsAList(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "traits.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text",
@@ -66,7 +66,7 @@ func TestAListWithAVocabularyRendersAsAList(t *testing.T) {
 
 func TestExcludesRendersOnTheFieldsEntry(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "traits.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text",
@@ -86,7 +86,7 @@ func TestExcludesRendersOnTheFieldsEntry(t *testing.T) {
 
 func TestADirectoryReferenceRendersAsDirectories(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "singletons.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people/*\n", 1)), 0o644)
@@ -116,7 +116,7 @@ func TestADirectoryRendersWhereThePageLives(t *testing.T) {
 	}
 	for _, c := range cases {
 		dir := testutil.CopyExample(t)
-		tax := filepath.Join(dir, "taxonomy")
+		tax := filepath.Join(dir, ".taxidermist")
 		p := filepath.Join(tax, "types", "project-plan.yaml")
 		b, _ := os.ReadFile(p)
 		body := strings.Replace(string(b), "optional:\n- tags\n", "optional:\n- tags\n- status\n", 1)
@@ -148,9 +148,9 @@ func TestThePagesNameTheRepoInvocation(t *testing.T) {
 	}
 	for _, c := range cases {
 		dir := testutil.CopyExample(t)
-		tax := filepath.Join(dir, "taxonomy")
+		tax := filepath.Join(dir, ".taxidermist")
 		if c.invocation != "" {
-			p := filepath.Join(tax, "scope.yaml")
+			p := filepath.Join(filepath.Dir(tax), ".taxidermist.yaml")
 			b, _ := os.ReadFile(p)
 			os.WriteFile(p, append(b, []byte("invocation: "+c.invocation+"\n")...), 0o644)
 		}
@@ -176,11 +176,11 @@ func TestThePagesNameTheRepoInvocation(t *testing.T) {
 func TestTheSchemaLinkNamesTheDirectory(t *testing.T) {
 	for _, readme := range []bool{true, false} {
 		dir := testutil.CopyExample(t)
-		tax := filepath.Join(dir, "taxonomy")
-		want := "[taxonomy/](../README.md)"
+		tax := filepath.Join(dir, ".taxidermist")
+		want := "[.taxidermist/](../README.md)"
 		if !readme {
 			os.Remove(filepath.Join(tax, "README.md"))
-			want = "[taxonomy/](..)"
+			want = "[.taxidermist/](..)"
 		}
 		s, err := schema.Load(tax)
 		if err != nil {
@@ -199,7 +199,7 @@ func TestTheSchemaLinkNamesTheDirectory(t *testing.T) {
 }
 
 func TestYAMLPagesNameTheFilesAndCopyAWholeFileEntryOrItem(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestYAMLPagesNameTheFilesAndCopyAWholeFileEntryOrItem(t *testing.T) {
 
 func TestAMapOfObjectsRendersOneEntryUnderAPlaceholder(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	testutil.Write(t, tax, "types/site.yaml", "files: config/site.yaml\nrequired: [name, timezone, groups]\nfields:\n"+
 		"  groups:\n    value: map\n    schema:\n      meaning: {value: str, required: true, guidance: g}\n"+
 		"      read_by: {value: list, guidance: g}\n    guidance: g\n")
@@ -255,13 +255,13 @@ func TestAMapOfObjectsRendersOneEntryUnderAPlaceholder(t *testing.T) {
 }
 
 func TestAFromVocabularySaysToAddValuesToItsDataFile(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	pages, _ := Pages(s)
 	want := "The values of [`team`](vocabularies/team.md) are the keys of [`config/teams.yaml`](../../config/teams.yaml), " +
-		"so a new one is added there, with its `purpose:`, not under [taxonomy/](../README.md)."
+		"so a new one is added there, with its `purpose:`, not under [.taxidermist/](../README.md)."
 	if !strings.Contains(pages["site"], want) {
 		t.Errorf("site.md lacks %q:\n%s", want, pages["site"])
 	}
@@ -279,7 +279,7 @@ func TestAPathRendersWhereThePageLivesAndItsName(t *testing.T) {
 	}
 	for _, c := range cases {
 		dir := testutil.CopyExample(t)
-		tax := filepath.Join(dir, "taxonomy")
+		tax := filepath.Join(dir, ".taxidermist")
 		p := filepath.Join(tax, "types", "project-plan.yaml")
 		b, _ := os.ReadFile(p)
 		body := strings.Replace(string(b), "- topic\n", "- topic\n- status\n", 1)
@@ -301,7 +301,7 @@ func TestAPathRendersWhereThePageLivesAndItsName(t *testing.T) {
 
 func TestAReferenceTypeRendersOnTheFormatPage(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "singletons.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people\n    reference_type: person\n", 1)), 0o644)

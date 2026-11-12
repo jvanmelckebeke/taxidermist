@@ -16,8 +16,8 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 taxidermist check --stdin-filename PATH < FILE
 
 Check frontmatter, and the YAML files a doctype's files: names, against the schema.
-With no files, every root in scope.yaml is audited. Files outside the governed roots
-are dropped, so a caller can hand over every staged file and scope.yaml decides
+With no files, every root in the config is audited. Files outside the governed roots
+are dropped, so a caller can hand over every staged file and the config decides
 which ones the schema governs.
 
 --stdin-filename checks the content on stdin as the markdown or YAML file at PATH,
