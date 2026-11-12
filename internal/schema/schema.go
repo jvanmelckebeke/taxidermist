@@ -1,7 +1,9 @@
 // Package schema loads a taxonomy directory.
 //
-//	scope.yaml           the roots the schema governs, how it treats doctypes it has no file for,
-//	                     and the folders whose names must be vocabulary values
+// Beside the folder sits .taxidermist.yaml (before 1.0 also read from scope.yaml inside it):
+// the roots the schema governs, where the docs go, how it treats doctypes it has no file
+// for, and the folders whose names must be vocabulary values. In the folder:
+//
 //	exempt.yaml          declared grandfathering: a path glob and the fields it may omit
 //	traits.yaml          field bundles a doctype composes
 //	singletons.yaml      shared fields that form no bundle, each naming its doctypes
@@ -24,8 +26,12 @@ import (
 )
 
 type Schema struct {
-	Dir          string // the taxonomy directory
-	Base         string // its parent: roots, references and exemptions resolve against it
+	Dir          string // the schema folder
+	Base         string // the config's folder: roots, references and exemptions resolve against it
+	Config       string // the config file, "" when there is none
+	ConfigName   string // its file name, for messages
+	Legacy       bool   // Config is the old Dir/scope.yaml
+	DocsDir      string // where `docs` writes the generated pages
 	Roots        []string
 	Ungoverned   string // "error" or "report"
 	Invocation   string // how this repo runs taxidermist, with `{command}` where the subcommand goes
@@ -39,7 +45,7 @@ type Schema struct {
 }
 
 // Command is how a reader of the generated pages runs one taxidermist subcommand in
-// this repo, from scope.yaml's `invocation:`.
+// this repo, from the config's `invocation:`.
 func (s *Schema) Command(sub string) string {
 	return strings.Replace(s.Invocation, "{command}", sub, 1)
 }
@@ -61,22 +67,26 @@ func (e *Error) Error() string { return "taxonomy: " + e.Msg }
 
 func errf(format string, a ...any) error { return &Error{fmt.Sprintf(format, a...)} }
 
-// Load reads a taxonomy directory.
+// Load reads a schema folder and its config. An empty dir looks in the working
+// directory; see Locate.
 func Load(dir string) (*Schema, error) {
-	abs, err := filepath.Abs(dir)
+	loc, err := Locate(dir)
 	if err != nil {
 		return nil, err
 	}
-	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
-		return nil, errf("%s is not a directory. Pass --taxonomy DIR.", dir)
+	if st, err := os.Stat(loc.Dir); err != nil || !st.IsDir() {
+		return nil, errf("%s is not a directory. Pass --taxonomy DIR.", Display(loc.Dir))
 	}
 	s := &Schema{
-		Dir: abs, Base: filepath.Dir(abs),
+		Dir:   loc.Dir,
 		Types: map[string]*Type{}, Vocabularies: map[string]*Vocabulary{},
 		Owners: map[string]map[string]bool{},
 	}
-	segments, err := s.loadScope()
+	segments, err := s.loadConfig(loc)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkDocsDir(); err != nil {
 		return nil, err
 	}
 	// Each step may use what the steps before it loaded: segments and fields bind to

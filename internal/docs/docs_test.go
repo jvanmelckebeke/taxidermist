@@ -10,7 +10,7 @@ import (
 )
 
 func TestExamplePagesAreCurrent(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,10 +26,12 @@ func TestExamplePagesAreCurrent(t *testing.T) {
 	}
 }
 
+const generated = "<!-- " + bannerText + " -->\n"
+
 func TestWriteThenCheckAndPruneStrayPages(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
-	stray := testutil.Write(t, tax, "format/gone.md", "old\n")
+	tax := filepath.Join(dir, ".taxidermist")
+	stray := testutil.Write(t, tax, "format/gone.md", generated+"old\n")
 	s, err := schema.Load(tax)
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +52,8 @@ func TestWriteThenCheckAndPruneStrayPages(t *testing.T) {
 
 func TestAStaleVocabularyPageIsPruned(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
-	stray := testutil.Write(t, tax, "format/vocabularies/gone.md", "old\n")
+	tax := filepath.Join(dir, ".taxidermist")
+	stray := testutil.Write(t, tax, "format/vocabularies/gone.md", generated+"old\n")
 	s, err := schema.Load(tax)
 	if err != nil {
 		t.Fatal(err)

@@ -13,8 +13,12 @@ import (
 func loadWith(t *testing.T, rel, body string) error {
 	t.Helper()
 	dir := testutil.CopyExample(t)
-	testutil.Write(t, filepath.Join(dir, "taxonomy"), rel, body)
-	_, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	if rel == "scope.yaml" {
+		testutil.Write(t, dir, ".taxidermist.yaml", body)
+	} else {
+		testutil.Write(t, filepath.Join(dir, ".taxidermist"), rel, body)
+	}
+	_, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	return err
 }
 
@@ -67,7 +71,7 @@ func TestLoadErrors(t *testing.T) {
 }
 
 func TestTypeDefaultsToTheFileStem(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +82,7 @@ func TestTypeDefaultsToTheFileStem(t *testing.T) {
 
 func TestOwnFieldsWinOverSingletonsOverTraits(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "types", "note.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(string(b)+"  topic:\n    value: str\n    definitions:\n      only: The note's own list.\n    guidance: g\n"), 0o644)
@@ -115,7 +119,7 @@ func TestSegmentLoadErrors(t *testing.T) {
 
 func TestADefinitionCanSayWhatAValueIsNotFor(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	testutil.Write(t, tax, "vocabularies/v.yaml", "definitions:\n"+
 		"  plain: A string.\n"+
 		"  full: {means: Yes this., not: Not that.}\n"+
@@ -153,7 +157,7 @@ func TestADefinitionCanSayWhatAValueIsNotFor(t *testing.T) {
 
 func TestFieldDefinitionsTakeTheSameForms(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	p := filepath.Join(tax, "types", "note.yaml")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.Replace(string(b), "draft: Still being written.",
@@ -179,7 +183,7 @@ func TestADirectoryPlaceholderMayNameARequiredWhenField(t *testing.T) {
 func TestAVocabularyReadsItsValuesFromADataFile(t *testing.T) {
 	dir := testutil.CopyExample(t)
 	testutil.Write(t, dir, "config/site.yaml", "name: n\ntimezone: Europe/Brussels\ntopics:\n  a: {meaning: The first.}\n  b: {}\n")
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	testutil.Write(t, tax, "vocabularies/listed.yaml", "from: config/site.yaml\nat: topics\nmeans: meaning\n")
 	s, err := schema.Load(tax)
 	if err != nil {
@@ -196,7 +200,7 @@ func TestAVocabularyReadsItsValuesFromADataFile(t *testing.T) {
 
 func TestSlugScopeTakesKnownValuesAndNeedsAFolder(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	tax := filepath.Join(dir, "taxonomy")
+	tax := filepath.Join(dir, ".taxidermist")
 	for _, c := range []struct {
 		body string
 		ok   bool

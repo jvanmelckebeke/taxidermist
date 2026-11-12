@@ -13,7 +13,7 @@ import (
 )
 
 // YAML files no doctype's `files:` matches are tallied under this name when
-// scope.yaml says `ungoverned: report`, since they have no doctype to tally under.
+// the config says `ungoverned: report`, since they have no doctype to tally under.
 const NoFilesMatch = "<yaml>"
 
 // yamlFile checks a YAML file against the one doctype whose `files:` glob matches

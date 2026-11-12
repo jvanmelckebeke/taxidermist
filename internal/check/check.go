@@ -57,7 +57,7 @@ type Result struct {
 	Files      []string            // every file handed to the check, absolute
 	Faults     []Fault             // in file order
 	Warnings   []Fault             // in file order; never fail a run
-	Ungoverned map[string][]string // doctype -> files, when scope.yaml says `ungoverned: report`
+	Ungoverned map[string][]string // doctype -> files, when the config says `ungoverned: report`
 }
 
 // Governed is the number of checked files whose doctype has a schema, or that had

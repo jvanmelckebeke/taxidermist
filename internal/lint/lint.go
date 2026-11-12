@@ -6,6 +6,7 @@ package lint
 import (
 	"fmt"
 
+	"github.com/jvanmelckebeke/taxidermist/internal/docs"
 	"github.com/jvanmelckebeke/taxidermist/internal/schema"
 )
 
@@ -28,6 +29,7 @@ var Rules = []struct{ ID, Doc string }{
 	{"segment-field", "a segment rule's field is one some doctype declares"},
 	{"excludes-declared", "a field's excludes names a field every doctype carrying it declares, and sits on a top-level field"},
 	{"files-under-root", "a doctype's files: glob lies under a governed root, or nothing checks the files it names"},
+	{"docs-folder-generated", "the docs folder holds no markdown without the GENERATED banner, which docs would delete"},
 	{"files-one-type", "every YAML file under a governed root matches the files: of at most one doctype"},
 }
 
@@ -51,8 +53,15 @@ func Run(s *schema.Schema) []Problem {
 		segmentRules,
 		filesUnderRoot,
 		filesOneType,
+		docsFolderGenerated,
 	} {
 		step(s, add)
 	}
 	return out
+}
+
+func docsFolderGenerated(s *schema.Schema, add adder) {
+	for _, p := range docs.Unbannered(s) {
+		add("docs-folder-generated", "%s has no GENERATED banner, so `docs` would delete it. Move it or point `docs:` at a folder of its own", schema.Display(p))
+	}
 }

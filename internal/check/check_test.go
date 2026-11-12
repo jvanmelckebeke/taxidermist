@@ -40,7 +40,7 @@ func checked(t *testing.T, rel, body string, edit ...func(dir string)) []Fault {
 		e(dir)
 	}
 	p := testutil.Write(t, dir, rel, body)
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func note(extra string) string {
 }
 
 func TestTheExampleIsClean(t *testing.T) {
-	s, err := schema.Load(filepath.Join(testutil.Example(), "taxonomy"))
+	s, err := schema.Load(filepath.Join(testutil.Example(), ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,11 +129,11 @@ func TestUngovernedDoctypeIsAFaultByDefault(t *testing.T) {
 
 func TestUngovernedDoctypeIsTalliedInReportMode(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+	scope := filepath.Join(dir, ".taxidermist.yaml")
 	b, _ := os.ReadFile(scope)
 	os.WriteFile(scope, []byte(strings.Replace(string(b), "ungoverned: error", "ungoverned: report", 1)), 0o644)
 	p := testutil.Write(t, dir, "notes/x.md", "---\ntype: recipe\n---\n")
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestRequiredWhenBindsOnlyTheMatchingValue(t *testing.T) {
 
 func TestExcludesRejectsARepeatOfTheNamedField(t *testing.T) {
 	excl := func(dir string) {
-		p := filepath.Join(dir, "taxonomy", "traits.yaml")
+		p := filepath.Join(dir, ".taxidermist", "traits.yaml")
 		b, _ := os.ReadFile(p)
 		os.WriteFile(p, []byte(strings.Replace(string(b), "      value: list\n      guidance: Free-text", "      value: list\n      excludes: topic\n      guidance: Free-text", 1)), 0o644)
 	}
@@ -180,7 +180,7 @@ func TestNoUnionFallback(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", body), "unknown role")
 	// Allowed by the note's field list but owned by nobody for notes: does not apply.
 	expect(t, faults(t, "notes/x.md", body, func(dir string) {
-		p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+		p := filepath.Join(dir, ".taxidermist", "types", "note.yaml")
 		b, _ := os.ReadFile(p)
 		os.WriteFile(p, []byte(strings.Replace(string(b), "- review\nrequired_when", "- review\n- role\nrequired_when", 1)), 0o644)
 	}), "value role")
@@ -208,7 +208,7 @@ func TestListItemsAreCheckedAsMappings(t *testing.T) {
 // withReviewers gives a note's `review:` a list against a vocabulary, a list of
 // references, and an object nested inside it.
 func withReviewers(dir string) {
-	p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+	p := filepath.Join(dir, ".taxidermist", "types", "note.yaml")
 	b, _ := os.ReadFile(p)
 	b = []byte(strings.Replace(string(b), "        guidance: When to look again.\n", `        guidance: When to look again.
       topics:
@@ -270,7 +270,7 @@ func TestFilesOutsideTheRootsAreDropped(t *testing.T) {
 func TestAMissingRootIsASchemaError(t *testing.T) {
 	dir := testutil.CopyExample(t)
 	os.RemoveAll(filepath.Join(dir, "meetings"))
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,16 +302,16 @@ func TestFnmatch(t *testing.T) {
 
 func TestTheTaxonomyDirectoryIsNeverWalked(t *testing.T) {
 	dir := testutil.CopyExample(t)
-	scope := filepath.Join(dir, "taxonomy", "scope.yaml")
+	scope := filepath.Join(dir, ".taxidermist.yaml")
 	b, _ := os.ReadFile(scope)
-	os.WriteFile(scope, []byte(strings.Replace(string(b), "- config\n", "- config\n- taxonomy\n", 1)), 0o644)
-	s, err := schema.Load(filepath.Join(dir, "taxonomy"))
+	os.WriteFile(scope, []byte(strings.Replace(string(b), "- config\n", "- config\n- .taxidermist\n", 1)), 0o644)
+	s, err := schema.Load(filepath.Join(dir, ".taxidermist"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	files, _ := Files(s, nil)
 	for _, p := range files {
-		if strings.Contains(p, string(filepath.Separator)+"taxonomy"+string(filepath.Separator)) {
+		if strings.Contains(p, string(filepath.Separator)+".taxidermist"+string(filepath.Separator)) {
 			t.Errorf("walked %s", p)
 		}
 	}

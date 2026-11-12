@@ -13,7 +13,7 @@ import (
 // Files returns the files to check, always filtered to the governed roots. With no
 // arguments it walks every root. Arguments are filtered the same way, so a caller
 // never needs its own copy of the root list: a hook hands over every staged file and
-// scope.yaml alone decides which of them the schema governs.
+// the config alone decides which of them the schema governs.
 //
 // A markdown file is a candidate, and a YAML file is one once some doctype has
 // `files:`, unless it sits in the taxonomy directory.
@@ -96,16 +96,16 @@ func Governed(s *schema.Schema, path string) (string, error) {
 		return "", fmt.Errorf("taxidermist: %s is a YAML file, and no doctype in types/ has `files:`", path)
 	}
 	if !candidate(s, p) || !under(p, roots) {
-		return "", fmt.Errorf("taxidermist: %s is not a markdown or YAML file under a root scope.yaml governs", path)
+		return "", fmt.Errorf("taxidermist: %s is not a markdown or YAML file under a root the config governs", path)
 	}
 	return p, nil
 }
 
 // candidate is true for a file the check reads: markdown, or YAML once a doctype
-// governs YAML. Nothing in the taxonomy directory is a candidate; it describes the
-// schema, and format/ is generated.
+// governs YAML. Nothing in the schema folder or the docs folder is a candidate: one
+// describes the schema, the other is generated and its templates are not pages.
 func candidate(s *schema.Schema, p string) bool {
-	if under(p, []string{s.Dir}) {
+	if under(p, []string{s.Dir, s.DocsDir}) {
 		return false
 	}
 	return strings.HasSuffix(p, ".md") || (schema.IsYAMLPath(p) && s.HasYAML())

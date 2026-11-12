@@ -59,7 +59,7 @@ func template(name string, f *schema.Field, tail, in string) []string {
 
 // subKey describes a nested key, or a map's values, as a list item with its allowed
 // values below it.
-func subKey(name string, k *schema.Field, req string) []string {
+func subKey(s *schema.Schema, name string, k *schema.Field, req string) []string {
 	line := "- " + name
 	if req != "" {
 		line += " · " + req
@@ -69,7 +69,7 @@ func subKey(name string, k *schema.Field, req string) []string {
 		line += ": " + k.Guidance
 	}
 	if k.Reference != "" {
-		line += " Any " + refTarget(k) + ", checked."
+		line += " Any " + refTarget(s, k) + ", checked."
 	}
 	out := []string{line}
 	for _, d := range k.Enum() {

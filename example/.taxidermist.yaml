@@ -1,4 +1,4 @@
-# The directories this schema governs, relative to the taxonomy's parent.
+# The directories this schema governs, relative to this file's folder.
 roots:
 - notes
 - people

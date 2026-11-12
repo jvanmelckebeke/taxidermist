@@ -14,7 +14,7 @@ func load(t *testing.T) (*taxidermist.Taxonomy, string) {
 	t.Helper()
 	dir := testutil.CopyExample(t)
 	t.Chdir(dir)
-	tax, err := taxidermist.Load("taxonomy")
+	tax, err := taxidermist.Load(".taxidermist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +77,8 @@ func TestResultJSON(t *testing.T) {
 
 func TestSchemaErrors(t *testing.T) {
 	dir := t.TempDir()
-	testutil.Write(t, dir, "taxonomy/types/note.yaml", "required: [\n")
-	if _, err := taxidermist.Load(filepath.Join(dir, "taxonomy")); err == nil {
+	testutil.Write(t, dir, ".taxidermist/types/note.yaml", "required: [\n")
+	if _, err := taxidermist.Load(filepath.Join(dir, ".taxidermist")); err == nil {
 		t.Error("a broken types/ file loaded")
 	}
 	tax, err := taxidermist.Load(t.TempDir())

@@ -50,13 +50,13 @@ func (p *typePage) heading() []string {
 		for i, tr := range t.Traits {
 			quoted[i] = "`" + tr + "`"
 		}
-		L = append(L, "Composes "+joinAnd(quoted)+", the field bundles in [../traits.yaml](../traits.yaml).", "")
+		L = append(L, "Composes "+joinAnd(quoted)+", the field bundles in ["+toSchema(p.s, 0, "traits.yaml")+"]("+toSchema(p.s, 0, "traits.yaml")+").", "")
 	}
 	switch t.Shape {
 	case "map":
 		line := "One entry per top-level key, each with the fields below."
 		if t.Key != nil {
-			if rule := keyRule(t.Key); rule != "" {
+			if rule := keyRule(p.s, t.Key); rule != "" {
 				line += " The key " + rule + "."
 			}
 			if t.Key.Guidance != "" {
@@ -116,7 +116,7 @@ func (p *typePage) conditions() []string {
 		L = append(L, "**`"+c.Field+"` is required only when "+whenText(c.When)+".**", "")
 	}
 	if p.t.Directory != "" || p.t.Stem != "" {
-		L = append(L, whereItLives(p.t), "")
+		L = append(L, whereItLives(p.s, p.t), "")
 	}
 	return L
 }
@@ -140,36 +140,36 @@ func (p *typePage) fieldGuide() []string {
 			L = append(L, "", "Never repeats `"+f.Excludes+"`. Checked.")
 		}
 		if f.Key != nil {
-			if rule := keyRule(f.Key); rule != "" {
+			if rule := keyRule(p.s, f.Key); rule != "" {
 				L = append(L, "", "Each key "+rule+".")
 			}
 		}
-		L = append(append(L, fieldValues(f)...), "")
+		L = append(append(L, fieldValues(p.s, f)...), "")
 	}
 	return L
 }
 
 // fieldValues describes what a field holds: its nested keys, a map's values, the
 // pages or keys a reference names, or its allowed values.
-func fieldValues(f *schema.Field) []string {
+func fieldValues(s *schema.Schema, f *schema.Field) []string {
 	v := schema.SortedKeys(f.Enum())
 	if sub := f.Nested(); len(sub) > 0 || f.Values != nil {
 		L := []string{""}
 		if f.Values != nil {
-			L = append(L, subKey("each value", f.Values, "")...)
+			L = append(L, subKey(s, "each value", f.Values, "")...)
 		}
 		for _, k := range sub {
 			kreq := "optional"
 			if k.Required {
 				kreq = "required"
 			}
-			L = append(L, subKey("`"+k.Name+"`", k, kreq)...)
+			L = append(L, subKey(s, "`"+k.Name+"`", k, kreq)...)
 		}
 		return L
 	}
 	switch {
 	case schema.IsYAMLPath(f.Reference):
-		return []string{"", "Values: any " + refTarget(f) + ". Checked, so a name that is not one is a fault."}
+		return []string{"", "Values: any " + refTarget(s, f) + ". Checked, so a name that is not one is a fault."}
 	case f.Reference != "":
 		by := "by its filename without `.md`"
 		if strings.HasSuffix(f.Reference, "/*") {
@@ -179,7 +179,7 @@ func fieldValues(f *schema.Field) []string {
 		if f.RefType != "" {
 			fault = "a name that resolves to no page, or to a page of another type, is a fault."
 		}
-		return []string{"", "Values: any " + refTarget(f) + ", " + by + ". Checked, so " + fault}
+		return []string{"", "Values: any " + refTarget(s, f) + ", " + by + ". Checked, so " + fault}
 	case len(v) > 0:
 		ticked := make([]string, len(v))
 		for i, x := range v {
@@ -207,9 +207,9 @@ func (p *typePage) meanings() []string {
 		}
 		L = append(L, "### `"+name+"`", "")
 		if v := p.s.Vocabularies[f.Vocabulary]; v != nil && v.Source != nil {
-			L = append(L, "Shared vocabulary "+vocabLink(f.Vocabulary)+", read from [`"+v.Source.From+"`](../../"+v.Source.From+").", "")
+			L = append(L, "Shared vocabulary "+vocabLink(f.Vocabulary)+", read from [`"+v.Source.From+"`]("+toBase(p.s, 0, v.Source.From)+").", "")
 		} else if f.Vocabulary != "" {
-			L = append(L, "Shared vocabulary from [../vocabularies/"+f.Vocabulary+".yaml](../vocabularies/"+f.Vocabulary+".yaml).", "")
+			L = append(L, "Shared vocabulary from ["+toSchema(p.s, 0, "vocabularies/"+f.Vocabulary+".yaml")+"]("+toSchema(p.s, 0, "vocabularies/"+f.Vocabulary+".yaml")+").", "")
 		}
 		L = append(L, valuesTable(f.Enum(), f.Vocabulary != "")...)
 		L = append(L, "")
@@ -236,7 +236,7 @@ func (p *typePage) addingAValue() []string {
 		if v.Source.At != "" {
 			line += "`" + v.Source.At + "` in "
 		}
-		line += "[`" + v.Source.From + "`](../../" + v.Source.From + "), so a new one is added there"
+		line += "[`" + v.Source.From + "`](" + toBase(p.s, 0, v.Source.From) + "), so a new one is added there"
 		if v.Source.Means != "" {
 			line += ", with its `" + v.Source.Means + ":`"
 		}
@@ -253,7 +253,7 @@ func matches(f *schema.Field) string {
 }
 
 // keyRule says what a map's key must be, as a predicate: "matches `^x$`".
-func keyRule(k *schema.Field) string {
+func keyRule(s *schema.Schema, k *schema.Field) string {
 	var parts []string
 	if k.Pattern != "" {
 		parts = append(parts, "matches `"+k.Pattern+"`")
@@ -264,7 +264,7 @@ func keyRule(k *schema.Field) string {
 		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
 	}
 	if k.Reference != "" {
-		parts = append(parts, "is a "+refTarget(k))
+		parts = append(parts, "is a "+refTarget(s, k))
 	}
 	return joinAnd(parts)
 }
@@ -282,24 +282,24 @@ func joinAnd(xs []string) string {
 // refTarget names what a `reference:` resolves against, linked: the pages anywhere
 // under a directory, for `<dir>/*` the directories directly under it that hold an
 // index.md, or the top-level keys of a YAML file.
-func refTarget(f *schema.Field) string {
+func refTarget(s *schema.Schema, f *schema.Field) string {
 	ref := f.Reference
 	if schema.IsYAMLPath(ref) {
-		return "top-level key of [`" + ref + "`](../../" + ref + ")"
+		return "top-level key of [`" + ref + "`](" + toBase(s, 0, ref) + ")"
 	}
 	typed := ""
 	if f.RefType != "" {
 		typed = " whose `type:` is `" + f.RefType + "`"
 	}
 	if dir, ok := strings.CutSuffix(ref, "/*"); ok {
-		return "directory under [`" + dir + "/`](../../" + dir + "/) that holds an `index.md`" + typed
+		return "directory under [`" + dir + "/`](" + toBase(s, 0, dir+"/") + ") that holds an `index.md`" + typed
 	}
-	return "page under [`" + ref + "/`](../../" + ref + "/)" + typed
+	return "page under [`" + ref + "/`](" + toBase(s, 0, ref+"/") + ")" + typed
 }
 
 // whereItLives says which folder a doctype's pages sit in, from its `directory:`, and
 // what the file is named, from its `path:`.
-func whereItLives(t *schema.Type) string {
+func whereItLives(s *schema.Schema, t *schema.Type) string {
 	if t.Directory == "" {
 		return "The page is named `" + t.Stem + ".md`, filled from its own frontmatter, in any folder. " +
 			"A page named anything else fails the check."
@@ -315,9 +315,9 @@ func whereItLives(t *schema.Type) string {
 	if t.SlugScope == "directory" {
 		line += ", and its slug is unique within its own folder."
 	} else if prefix := schema.DirectoryPrefix(t.Directory); prefix != "" {
-		line += ", and its slug is unique under [`" + prefix + "/`](../../" + prefix + "/)."
+		line += ", and its slug is unique under [`" + prefix + "/`](" + toBase(s, 0, prefix+"/") + ")."
 	} else {
-		line += ", and its slug is unique under [the taxonomy's parent](../../)."
+		line += ", and its slug is unique under [the config's folder](" + toBase(s, 0, "") + ")."
 	}
 	for _, part := range strings.Split(t.Directory, "/") {
 		m := schema.Placeholder.FindStringSubmatch(part)
