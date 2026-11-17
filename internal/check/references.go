@@ -30,7 +30,7 @@ func (c *Checker) references(label string, v any, spec *schema.Field, add adder)
 			continue
 		}
 		slug, member, pointed := value.Text(x), "", false
-		if spec.Members != "" {
+		if spec.Members != "" && !pages[slug] {
 			slug, member, pointed = strings.Cut(slug, "::")
 		}
 		if pages[slug] {
@@ -94,7 +94,7 @@ func (c *Checker) referenceType(label, slug string, x any, spec *schema.Field, a
 // page lists under the field's `members:`. Two pages may share a stem, and a member
 // of either counts.
 func (c *Checker) member(label, slug, member string, x any, spec *schema.Field, add adder) {
-	got := c.pageMembers(spec.Reference, spec.Members)[slug]
+	got := c.pageMembers(spec)[slug]
 	if slices.Contains(got, member) {
 		return
 	}
@@ -125,8 +125,9 @@ func (c *Checker) eachPage(ref string, fn func(slug, path string)) {
 
 // pageMembers maps each slug of a page reference to the scalars listed under field in
 // the frontmatter of every page with that slug. A page without the field lists none.
-func (c *Checker) pageMembers(ref, field string) map[string][]string {
-	key := ref + "\x00" + field
+func (c *Checker) pageMembers(spec *schema.Field) map[string][]string {
+	ref, field := spec.Reference, spec.Members
+	key := ref + "\x00" + field + "\x00" + spec.RefType
 	if out, ok := c.members[key]; ok {
 		return out
 	}
@@ -136,6 +137,11 @@ func (c *Checker) pageMembers(ref, field string) map[string][]string {
 		fm, err := frontmatter.Bytes(raw)
 		if err != nil || fm == nil {
 			return
+		}
+		if spec.RefType != "" {
+			if t, _ := fm.Get("type"); !value.IsScalar(t) || value.Text(t) != spec.RefType {
+				return
+			}
 		}
 		v, ok := fm.Get(field)
 		if !ok {

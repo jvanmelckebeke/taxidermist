@@ -269,7 +269,7 @@ func keyRule(k *schema.Field) string {
 	}
 	if k.Vocabulary != "" {
 		parts = append(parts, "is a value of "+vocabLink(k.Vocabulary))
-	} else if v := schema.SortedKeys(k.Enum()); len(v) > 0 {
+	} else if v := schema.SortedKeys(k.Selectable()); len(v) > 0 {
 		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
 	}
 	if k.Reference != "" {

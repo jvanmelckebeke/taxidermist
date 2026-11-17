@@ -77,6 +77,9 @@ func subKey(name string, k *schema.Field, req string) []string {
 	out := []string{line}
 	for _, d := range k.Enum() {
 		line := "  - `" + d.Key + "`: " + d.Means
+		if d.Layer {
+			line += " (a layer, not a value by itself)"
+		}
 		if d.Not != "" {
 			line += " Not for: " + d.Not
 		}

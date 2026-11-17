@@ -513,3 +513,24 @@ func TestANodeOverridesLeafOnly(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", item("books::fiction"), set))
 	expect(t, faults(t, "notes/x.md", item("books"), set), "value kind")
 }
+
+func TestMembersComeOnlyFromPagesOfTheReferenceType(t *testing.T) {
+	typed := func(dir string) {
+		withMembers(dir)
+		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		b, _ := os.ReadFile(p)
+		put(dir, "taxonomy/singletons.yaml", strings.Replace(string(b), "members: skills\n", "members: skills\n    reference_type: person\n", 1))
+		put(dir, "people/team/carol.work.md", "---\ntype: profile\ntitle: p\nskills: [rust]\n---\n")
+		put(dir, "people/other/carol.md", "---\ntype: meeting\ntitle: m\nskills: [rust]\n---\n")
+	}
+	expect(t, faults(t, "notes/x.md", note("people: [carol::go]\n"), typed))
+	expect(t, faults(t, "notes/x.md", note("people: [carol::rust]\n"), typed), "value people[0]")
+}
+
+func TestAPageSlugHoldingTheSeparatorStillResolves(t *testing.T) {
+	odd := func(dir string) {
+		withMembers(dir)
+		put(dir, "people/team/x::y.md", "---\ntype: person\ntitle: X\nskills: [go]\n---\n")
+	}
+	expect(t, faults(t, "notes/x.md", note("people: [\"x::y\", \"x::y::go\"]\n"), odd), "value people[1]")
+}

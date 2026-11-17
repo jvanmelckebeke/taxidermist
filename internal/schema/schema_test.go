@@ -48,6 +48,7 @@ func TestLoadErrors(t *testing.T) {
 		{"leaf_only without children", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, leaf_only: true, definitions: {a: b}}\n", "goes with `children:`"},
 		{"leaf_only on a node without children", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, definitions: {a: {means: b, leaf_only: true}}}\n", "`leaf_only:` on `a`, which has no `children:`"},
 		{"children key with the separator", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, definitions: {a: {means: b, children: {'c::d': e}}}}\n", "containing `::`"},
+		{"empty definition key", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, definitions: {a: {means: b, children: {'': e}}}}\n", "an empty definition key"},
 		{"shape without files", "types/x.yaml", "shape: map\n", "go with `files:`"},
 		{"unknown shape", "types/x.yaml", "files: config/x.yaml\nshape: tree\n", "it takes fields, map, list"},
 		{"key off a map", "types/x.yaml", "files: config/x.yaml\nkey: {pattern: x}\n", "`shape: fields`"},

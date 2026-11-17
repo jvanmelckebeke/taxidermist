@@ -93,8 +93,8 @@ type Field struct {
 	Values      *Field           `yaml:"values"`         // a `value: map`'s values, when they are not mappings with a `schema:`
 	Required    bool             `yaml:"required"`       // nested keys only
 	AppliesTo   []string         `yaml:"applies_to"`     // singletons only
-	Excludes    string           `yaml:"excludes"`
-	LeafOnly    bool             `yaml:"leaf_only"` // with nested `children:` definitions, only a path to a leaf is a value       // a field whose value this one never repeats
+	Excludes    string           `yaml:"excludes"`       // a field whose value this one never repeats
+	LeafOnly    bool             `yaml:"leaf_only"`      // with nested `children:` definitions, only a path to a leaf is a value
 	defs        []Def
 	re          *regexp.Regexp
 }
@@ -167,7 +167,7 @@ func (s *Schema) bind(f *Field, where string) error {
 	}
 	if f.Members != "" && (f.Reference == "" || IsYAMLPath(f.Reference)) {
 		return errf("%s: field `%s` has `members:`, which goes with a `reference:` to pages; "+
-			"a YAML file's keys have no frontmatter to read members from.", where, f.Name)
+			"a YAML file's keys have no frontmatter to read members from, and without a `reference:` there is no page.", where, f.Name)
 	}
 	if (f.Key != nil || f.Values != nil) && f.Value != "map" {
 		return errf("%s: field `%s` has `key:` or `values:`, which go with `value: map`.", where, f.Name)
@@ -192,6 +192,9 @@ func (s *Schema) bind(f *Field, where string) error {
 		for i, k := range o.Keys {
 			m := o.Vals[i]
 			key := prefix + k
+			if k == "" {
+				return errf("%s: field `%s` has an empty definition key.", where, f.Name)
+			}
 			if strings.Contains(k, "::") {
 				return errf("%s: field `%s` has a definition `%s` containing `::`, which separates the layers of a path.", where, f.Name, k)
 			}
