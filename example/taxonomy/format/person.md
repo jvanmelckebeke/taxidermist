@@ -12,6 +12,7 @@ type: person
 title: <str>
 tags: []   # optional
 role: <colleague | friend>   # optional
+skills: []   # optional
 ---
 ```
 
@@ -30,6 +31,9 @@ Free-text keywords. Not checked; use `topic` for anything you filter on.
 How you know them.
 
 Values: `colleague` · `friend`, defined below.
+
+**`skills`** · optional · `list`  
+What the person can help with. A note's `reviewer` names one as `<person>::<skill>`.
 
 ## What the values mean
 

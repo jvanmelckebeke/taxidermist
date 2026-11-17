@@ -18,6 +18,8 @@ status: <draft | final>   # optional
 review:   # optional
   open: <bool>
   when: <date>   # optional
+reviewer: []   # optional
+source: <books | books::fiction | books::fiction::horror | books::fiction::thriller | books::nonfiction | movies>   # optional
 ---
 ```
 
@@ -58,6 +60,16 @@ The review a final note went through.
 - `open` · required · `bool`: false once the review is done.
 - `when` · optional · `date`: When to look again.
 
+**`reviewer`** · optional · `list`  
+Who reviewed it, as a person (`alice`) or as the skill they reviewed it for (`alice::go`).
+
+Values: any page under [`people/`](../../people/) whose `type:` is `person`, by its filename without `.md`. `<name>::<member>` also works, where `<member>` is listed under `skills` in that page's frontmatter. Checked, so a name that resolves to no page, or to a page of another type, or a member the page does not list, is a fault.
+
+**`source`** · optional · `str`  
+Where the note came from, as a path through the layers below. A path may stop at any layer.
+
+Values: `books` · `books::fiction` · `books::fiction::horror` · `books::fiction::thriller` · `books::nonfiction` · `movies`, defined below.
+
 ## What the values mean
 
 ### `topic`
@@ -77,6 +89,17 @@ Shared vocabulary from [../vocabularies/topic.yaml](../vocabularies/topic.yaml).
 |---|---|
 | `draft` | Still being written. |
 | `final` | Done; a reviewer has signed off. |
+
+### `source`
+
+| value | means |
+|---|---|
+| `books` | Printed or e-books. |
+| `books::fiction` | Invented stories. |
+| `books::fiction::horror` | Fear as the point. |
+| `books::fiction::thriller` | Suspense-driven plots. |
+| `books::nonfiction` | Factual works. |
+| `movies` | Feature films. |
 
 ## Adding a value
 

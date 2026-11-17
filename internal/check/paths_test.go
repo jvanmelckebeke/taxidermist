@@ -419,7 +419,7 @@ func TestAMemberOfAnUnknownPageFailsOnThePage(t *testing.T) {
 }
 
 func TestAMemberOfAPageWithoutTheFieldIsInvalid(t *testing.T) {
-	f := checked(t, "notes/x.md", note("people: [alice::go]\n"), withMembers)
+	f := checked(t, "notes/x.md", note("people: [bob::go]\n"), withMembers)
 	if len(f) != 1 || !strings.HasSuffix(f[0].Why, ", which lists none") {
 		t.Errorf("faults = %+v", f)
 	}

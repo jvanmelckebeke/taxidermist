@@ -170,6 +170,37 @@ with a pinned wrapper sets `invocation: bin/taxidermist`, or
 `invocation: tools/taxidermist {command} --taxonomy kb/taxonomy` when the taxonomy is
 not at `./taxonomy`.
 
+### Paths with `::`
+
+Two field keys address something inside something else with `::`. Both are used in
+`example/`, on `reviewer` and `source` in `taxonomy/types/note.yaml`.
+
+```yaml
+# Points into a page: people/alice.md has `skills: [go, sql]`.
+reviewer:
+  value: list
+  reference: people
+  members: skills        # `alice` and `alice::go` pass; `alice::rust` fails
+
+# A path through nested definitions, to any depth.
+source:
+  value: str
+  leaf_only: false       # the default; true requires a path to a leaf
+  definitions:
+    books:
+      means: Printed or e-books.
+      children:
+        fiction:
+          means: Invented stories.
+          children:
+            thriller: Suspense-driven plots.
+        nonfiction: Factual works.
+    movies: Feature films.
+```
+
+`source: books::fiction::thriller` and `source: movies` pass. `source: fiction` fails
+and lists every valid path.
+
 ## Folder names
 
 `segments:` in `scope.yaml` ties the names directly under a directory to a vocabulary

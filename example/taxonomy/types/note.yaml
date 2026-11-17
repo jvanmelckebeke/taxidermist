@@ -10,6 +10,8 @@ optional:
 - people
 - status
 - review
+- reviewer
+- source
 required_when:
   review:
     status: final
@@ -31,3 +33,23 @@ fields:
         value: date
         guidance: When to look again.
     guidance: The review a final note went through.
+  reviewer:
+    value: list
+    reference: people
+    reference_type: person
+    members: skills
+    guidance: Who reviewed it, as a person (`alice`) or as the skill they reviewed it for (`alice::go`).
+  source:
+    value: str
+    guidance: Where the note came from, as a path through the layers below. A path may stop at any layer.
+    definitions:
+      books:
+        means: Printed or e-books.
+        children:
+          fiction:
+            means: Invented stories.
+            children:
+              thriller: Suspense-driven plots.
+              horror: Fear as the point.
+          nonfiction: Factual works.
+      movies: Feature films.

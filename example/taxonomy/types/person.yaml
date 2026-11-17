@@ -6,6 +6,7 @@ required:
 optional:
 - tags
 - role
+- skills
 fields:
   role:
     value: str
@@ -13,3 +14,6 @@ fields:
       colleague: Someone you work with.
       friend: Someone you do not.
     guidance: How you know them.
+  skills:
+    value: list
+    guidance: What the person can help with. A note's `reviewer` names one as `<person>::<skill>`.
