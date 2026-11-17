@@ -45,7 +45,7 @@ func template(name string, f *schema.Field, tail, in string) []string {
 		}
 		return out
 	}
-	v := schema.SortedKeys(f.Enum())
+	v := schema.SortedKeys(f.Selectable())
 	switch {
 	case len(v) > 0 && f.Value == "list":
 		return []string{in + name + ": [<" + strings.Join(v, " | ") + ">]" + tail}
@@ -70,10 +70,16 @@ func subKey(name string, k *schema.Field, req string) []string {
 	}
 	if k.Reference != "" {
 		line += " Any " + refTarget(k) + ", checked."
+		if k.Members != "" {
+			line += " `<name>::<member>` takes a member listed under `" + k.Members + "` on that page."
+		}
 	}
 	out := []string{line}
 	for _, d := range k.Enum() {
 		line := "  - `" + d.Key + "`: " + d.Means
+		if d.Layer {
+			line += " (a layer, not a value by itself)"
+		}
 		if d.Not != "" {
 			line += " Not for: " + d.Not
 		}

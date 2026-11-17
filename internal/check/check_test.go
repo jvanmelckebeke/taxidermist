@@ -182,7 +182,7 @@ func TestNoUnionFallback(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", body, func(dir string) {
 		p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
 		b, _ := os.ReadFile(p)
-		os.WriteFile(p, []byte(strings.Replace(string(b), "- review\nrequired_when", "- review\n- role\nrequired_when", 1)), 0o644)
+		os.WriteFile(p, []byte(strings.Replace(string(b), "- source\nrequired_when", "- source\n- role\nrequired_when", 1)), 0o644)
 	}), "value role")
 }
 

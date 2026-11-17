@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -14,6 +15,7 @@ type Def struct {
 	Means string
 	Not   string // what the value is not for, where a neighbour is easy to confuse with it
 	Group string // the vocabulary group it sits under, if any
+	Layer bool   // a layer of a `children:` tree that is not a value by itself
 }
 
 // SortedKeys are the keys of a list of definitions, sorted, once each.
@@ -31,17 +33,21 @@ func SortedKeys(defs []Def) []string {
 }
 
 // Meaning is a definition: a one-line string, or a mapping with `means:` and an
-// optional `not:` that says what the value is not for.
+// optional `not:` that says what the value is not for. `children:` nests definitions
+// one layer down, so `books::fiction` is a value; `leaf_only:` overrides the field's
+// setting for the node's own value.
 type Meaning struct {
-	Means string `yaml:"means"`
-	Not   string `yaml:"not"`
+	Means    string           `yaml:"means"`
+	Not      string           `yaml:"not"`
+	Children Ordered[Meaning] `yaml:"children"`
+	LeafOnly *bool            `yaml:"leaf_only"`
 }
 
 func (m *Meaning) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {
 		return n.Decode(&m.Means)
 	}
-	if err := strict(n, "a definition", "means", "not"); err != nil {
+	if err := strict(n, "a definition", "means", "not", "children", "leaf_only"); err != nil {
 		return err
 	}
 	type plain Meaning
@@ -81,19 +87,21 @@ type Field struct {
 	Items       Ordered[*Field]  `yaml:"items"`          // keys of each mapping in a `value: list`
 	Reference   string           `yaml:"reference"`      // a directory of pages, `<dir>/*`, or a YAML file whose top-level keys are the values
 	RefType     string           `yaml:"reference_type"` // the `type:` a referenced page must declare
+	Members     string           `yaml:"members"`        // a list field of the referenced page; `<slug>::<member>` is a value when the page lists the member there
 	Pattern     string           `yaml:"pattern"`        // a regular expression every scalar value matches
 	Key         *Field           `yaml:"key"`            // a `value: map`'s keys
 	Values      *Field           `yaml:"values"`         // a `value: map`'s values, when they are not mappings with a `schema:`
 	Required    bool             `yaml:"required"`       // nested keys only
 	AppliesTo   []string         `yaml:"applies_to"`     // singletons only
 	Excludes    string           `yaml:"excludes"`       // a field whose value this one never repeats
+	LeafOnly    bool             `yaml:"leaf_only"`      // with nested `children:` definitions, only a path to a leaf is a value
 	defs        []Def
 	re          *regexp.Regexp
 }
 
 func (f *Field) UnmarshalYAML(n *yaml.Node) error {
 	if err := strict(n, "a field", "value", "guidance", "definitions", "vocabulary", "dynamic",
-		"schema", "items", "reference", "reference_type", "pattern", "key", "values", "required", "applies_to", "excludes"); err != nil {
+		"schema", "items", "reference", "reference_type", "members", "pattern", "key", "values", "required", "applies_to", "excludes", "leaf_only"); err != nil {
 		return err
 	}
 	type plain Field
@@ -127,6 +135,18 @@ func (f *Field) Enum() []Def {
 	return f.defs
 }
 
+// Selectable is the allowed values: Enum without the layers of a `children:` tree
+// that are not values by themselves.
+func (f *Field) Selectable() []Def {
+	var out []Def
+	for _, d := range f.Enum() {
+		if !d.Layer {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // Matches is true when the field has no pattern or text matches it.
 func (f *Field) Matches(text string) bool {
 	return f.re == nil || f.re.MatchString(text)
@@ -145,6 +165,10 @@ func (s *Schema) bind(f *Field, where string) error {
 		return errf("%s: field `%s` has `reference_type:`, which goes with a `reference:` to pages; "+
 			"a YAML file's keys have no type.", where, f.Name)
 	}
+	if f.Members != "" && (f.Reference == "" || IsYAMLPath(f.Reference)) {
+		return errf("%s: field `%s` has `members:`, which goes with a `reference:` to pages; "+
+			"a YAML file's keys have no frontmatter to read members from, and without a `reference:` there is no page.", where, f.Name)
+	}
 	if (f.Key != nil || f.Values != nil) && f.Value != "map" {
 		return errf("%s: field `%s` has `key:` or `values:`, which go with `value: map`.", where, f.Name)
 	}
@@ -162,8 +186,39 @@ func (s *Schema) bind(f *Field, where string) error {
 		}
 		f.defs = v.Defs
 	}
-	for i, k := range f.Definitions.Keys {
-		f.defs = append(f.defs, Def{Key: k, Means: f.Definitions.Vals[i].Means, Not: f.Definitions.Vals[i].Not})
+	tree := false
+	var flatten func(prefix string, o Ordered[Meaning]) error
+	flatten = func(prefix string, o Ordered[Meaning]) error {
+		for i, k := range o.Keys {
+			m := o.Vals[i]
+			key := prefix + k
+			if k == "" {
+				return errf("%s: field `%s` has an empty definition key.", where, f.Name)
+			}
+			if strings.Contains(k, "::") {
+				return errf("%s: field `%s` has a definition `%s` containing `::`, which separates the layers of a path.", where, f.Name, k)
+			}
+			kids := len(m.Children.Keys) > 0
+			if m.LeafOnly != nil && !kids {
+				return errf("%s: field `%s` has `leaf_only:` on `%s`, which has no `children:`.", where, f.Name, key)
+			}
+			leaf := f.LeafOnly
+			if m.LeafOnly != nil {
+				leaf = *m.LeafOnly
+			}
+			tree = tree || kids
+			f.defs = append(f.defs, Def{Key: key, Means: m.Means, Not: m.Not, Layer: kids && leaf})
+			if err := flatten(key+"::", m.Children); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := flatten("", f.Definitions); err != nil {
+		return err
+	}
+	if f.LeafOnly && !tree {
+		return errf("%s: field `%s` has `leaf_only:`, which goes with `children:` in its `definitions:`.", where, f.Name)
 	}
 	if f.Key != nil {
 		f.Key.Name = "key"

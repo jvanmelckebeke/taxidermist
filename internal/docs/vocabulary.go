@@ -43,7 +43,11 @@ func valuesTable(enum []schema.Def, groups bool) []string {
 		if grouped {
 			row += " " + d.Group + " |"
 		}
-		row += " " + cell(d.Means) + " |"
+		means := cell(d.Means)
+		if d.Layer {
+			means += " (a layer, not a value by itself)"
+		}
+		row += " " + means + " |"
 		if nots {
 			row += " " + cell(d.Not) + " |"
 		}

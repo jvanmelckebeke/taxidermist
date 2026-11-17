@@ -152,7 +152,7 @@ func (p *typePage) fieldGuide() []string {
 // fieldValues describes what a field holds: its nested keys, a map's values, the
 // pages or keys a reference names, or its allowed values.
 func fieldValues(f *schema.Field) []string {
-	v := schema.SortedKeys(f.Enum())
+	v := schema.SortedKeys(f.Selectable())
 	if sub := f.Nested(); len(sub) > 0 || f.Values != nil {
 		L := []string{""}
 		if f.Values != nil {
@@ -179,7 +179,16 @@ func fieldValues(f *schema.Field) []string {
 		if f.RefType != "" {
 			fault = "a name that resolves to no page, or to a page of another type, is a fault."
 		}
-		return []string{"", "Values: any " + refTarget(f) + ", " + by + ". Checked, so " + fault}
+		line := "Values: any " + refTarget(f) + ", " + by + "."
+		if f.Members != "" {
+			line += " `<name>::<member>` also works, where `<member>` is listed under `" + f.Members +
+				"` in that page's frontmatter."
+			fault = "a name that resolves to no page, or a member the page does not list, is a fault."
+			if f.RefType != "" {
+				fault = "a name that resolves to no page, or to a page of another type, or a member the page does not list, is a fault."
+			}
+		}
+		return []string{"", line + " Checked, so " + fault}
 	case len(v) > 0:
 		ticked := make([]string, len(v))
 		for i, x := range v {
@@ -260,7 +269,7 @@ func keyRule(k *schema.Field) string {
 	}
 	if k.Vocabulary != "" {
 		parts = append(parts, "is a value of "+vocabLink(k.Vocabulary))
-	} else if v := schema.SortedKeys(k.Enum()); len(v) > 0 {
+	} else if v := schema.SortedKeys(k.Selectable()); len(v) > 0 {
 		parts = append(parts, "is one of `"+strings.Join(v, "` · `")+"`")
 	}
 	if k.Reference != "" {

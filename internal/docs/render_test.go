@@ -320,6 +320,65 @@ func TestAReferenceTypeRendersOnTheFormatPage(t *testing.T) {
 	}
 }
 
+func TestMembersRenderOnTheFormatPage(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "singletons.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people\n    members: skills\n", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "`<name>::<member>` also works, where `<member>` is listed under `skills` in that page's frontmatter. " +
+		"Checked, so a name that resolves to no page, or a member the page does not list, is a fault."
+	if !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
+	}
+}
+
+func TestNestedDefinitionsRenderEveryLayer(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "types", "note.yaml")
+	b, _ := os.ReadFile(p)
+	if !strings.Contains(string(b), "fields:\n") {
+		t.Fatal("note.yaml has no fields:")
+	}
+	b = []byte(strings.Replace(string(b), "optional:\n- tags\n", "optional:\n- tags\n- kind\n", 1))
+	os.WriteFile(p, append(b, []byte(`  kind:
+    value: str
+    leaf_only: true
+    definitions:
+      books:
+        means: Printed or e-books
+        children:
+          fiction: {means: Invented stories, children: {thriller: Suspense-driven plots}}
+      movies: Feature films
+`)...), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Values: `books::fiction::thriller` \u00b7 `movies`",
+		"| `books` | Printed or e-books (a layer, not a value by itself) |",
+		"| `books::fiction::thriller` | Suspense-driven plots |",
+	} {
+		if !strings.Contains(pages["note"], want) {
+			t.Errorf("note.md lacks %q", want)
+		}
+	}
+}
+
 func TestWhenTextWordsEmptyConditions(t *testing.T) {
 	w := schema.Ordered[any]{Keys: []string{"archived", "status", "owner", "tags"}, Vals: []any{nil, "final", "", ""}}
 	want := "`archived` is not set, `status: final`, `owner` is not set, `tags` is not set"

@@ -59,8 +59,8 @@ func (c *Checker) element(label string, x any, spec *schema.Field, add adder) {
 		c.references(label, x, spec, add)
 		return
 	}
-	if enum := spec.Enum(); len(enum) > 0 && !member(x, enum) {
-		add("value", label, x, "allowed: "+strings.Join(schema.SortedKeys(enum), " · "))
+	if len(spec.Enum()) > 0 && !member(x, spec.Selectable()) {
+		add("value", label, x, "allowed: "+strings.Join(schema.SortedKeys(spec.Selectable()), " · "))
 	}
 }
 

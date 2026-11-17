@@ -109,10 +109,12 @@ A field is described by these keys:
 | key | means |
 |---|---|
 | `value` | `str`, `date`, `bool`, `int`, `float`, `list`, `object`, `map`, or an `a\|b` union. `float` accepts ints |
-| `definitions` | value → its meaning. The keys are the allowed values; there is no second list |
+| `definitions` | value → its meaning. The keys are the allowed values; there is no second list. A definition written as a mapping can add `children:`, a nested `definitions` block, one layer down. A value is then a path joined with `::`, such as `books::fiction::thriller`, to any depth; every layer has its own `means:` and `not:`, and the generated page lists every path. A key cannot contain `::`. Vocabularies do not take `children:` |
+| `leaf_only` | with nested `children:` in `definitions:`, `true` makes only a path to a leaf a value, so `books::fiction` fails when `thriller` and `horror` sit under it. The default is `false`: a path may stop at any layer. A node's own `leaf_only:` overrides the field's for that node. It fails in `lint` on a field or node that has no `children:` |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs, searched recursively, are the allowed values, so the list grows by adding a page. `reference: stories/*` takes the names of the folders directly under `stories/` that hold an `index.md` instead; the pages inside them are not values. `reference: gitea/repos.yaml`, a YAML file, takes that file's top-level keys |
 | `reference_type` | with a `reference:` to pages, the `type:` a page must declare to count. `reference: people` with `reference_type: person` takes `alice` but not `alice.work`, a `profile` page in the same folder. Every item of a list is checked; for `<dir>/*` the folder's `index.md` gives the type |
+| `members` | with a `reference:` to pages, a list field of the referenced page. A value `<slug>::<member>` is then valid when `<slug>` resolves as it does without `members:` and the page lists `<member>` under that field in its frontmatter. A bare `<slug>` stays valid. The separator is `::` and is not configurable; the value splits at its first `::`, unless the whole value is itself a page slug. A `pattern:` applies to the whole `slug::member` text. An unknown member fails naming the page and the members it lists, and a page without the field lists none. It works with the recursive form, with `<dir>/*` (the field is read from the folder's `index.md`) and with `reference_type` (the type is checked first, and only pages of that type supply members). Pages sharing a slug each supply members. `members:` without a `reference:`, or on a `reference:` to a YAML file, which has no frontmatter, fails in `lint`. Without `members:` a value holding `::` is an unknown slug |
 | `pattern` | a regular expression every value, or every item of a list, must match |
 | `schema` | for `value: object`, the nested keys, each described the same way. For `value: map`, the keys of every value |
 | `key` | for `value: map`, what every key must be: a `pattern`, `vocabulary`, `definitions` or `reference` |
@@ -167,6 +169,37 @@ goes; without it the subcommand is appended. It defaults to `taxidermist`. A rep
 with a pinned wrapper sets `invocation: bin/taxidermist`, or
 `invocation: tools/taxidermist {command} --taxonomy kb/taxonomy` when the taxonomy is
 not at `./taxonomy`.
+
+### Paths with `::`
+
+Two field keys address something inside something else with `::`. Both are used in
+`example/`, on `reviewer` and `source` in `taxonomy/types/note.yaml`.
+
+```yaml
+# Points into a page: people/alice.md has `skills: [go, sql]`.
+reviewer:
+  value: list
+  reference: people
+  members: skills        # `alice` and `alice::go` pass; `alice::rust` fails
+
+# A path through nested definitions, to any depth.
+source:
+  value: str
+  leaf_only: false       # the default; true requires a path to a leaf
+  definitions:
+    books:
+      means: Printed or e-books.
+      children:
+        fiction:
+          means: Invented stories.
+          children:
+            thriller: Suspense-driven plots.
+        nonfiction: Factual works.
+    movies: Feature films.
+```
+
+`source: books::fiction::thriller` and `source: movies` pass. `source: fiction` fails
+and lists every valid path.
 
 ## Folder names
 
@@ -277,7 +310,8 @@ Every command takes `--taxonomy DIR` (default `taxonomy`). Exit codes: 0 clean,
 
 `check` reports seven kinds of fault: `value` (a value that isn't allowed, misses
 its `pattern`, repeats the field its spec `excludes`, names a page of the wrong
-`reference_type`, or sits outside its `directory:` or `path:`, and a YAML file no
+`reference_type`, names a `members:` entry the page does not list, or sits outside its
+`directory:` or `path:`, and a YAML file no
 doctype or two doctypes match), `type`, `missing` (a required field is absent), `unknown`
 (an undeclared key), `shape` (wrong keys inside an object or list item), `parse` (a
 block that opens and doesn't parse, which leaves the file invisible to every
