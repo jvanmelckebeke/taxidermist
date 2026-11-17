@@ -179,7 +179,16 @@ func fieldValues(f *schema.Field) []string {
 		if f.RefType != "" {
 			fault = "a name that resolves to no page, or to a page of another type, is a fault."
 		}
-		return []string{"", "Values: any " + refTarget(f) + ", " + by + ". Checked, so " + fault}
+		line := "Values: any " + refTarget(f) + ", " + by + "."
+		if f.Members != "" {
+			line += " `<name>::<member>` also works, where `<member>` is listed under `" + f.Members +
+				"` in that page's frontmatter."
+			fault = "a name that resolves to no page, or a member the page does not list, is a fault."
+			if f.RefType != "" {
+				fault = "a name that resolves to no page, or to a page of another type, or a member the page does not list, is a fault."
+			}
+		}
+		return []string{"", line + " Checked, so " + fault}
 	case len(v) > 0:
 		ticked := make([]string, len(v))
 		for i, x := range v {

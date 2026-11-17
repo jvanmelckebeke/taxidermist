@@ -43,6 +43,8 @@ func TestLoadErrors(t *testing.T) {
 		{"reference_type on a YAML reference", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, reference: config/teams.yaml, reference_type: person}\n", "goes with a `reference:` to pages"},
 		{"reference_type naming no doctype", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, reference: people, reference_type: nobody}\n", "`reference_type: nobody`, which is no page doctype"},
 		{"reference_type naming a YAML doctype", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, reference: people, reference_type: site}\n", "which is no page doctype"},
+		{"members without reference", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, members: skills}\n", "goes with a `reference:` to pages"},
+		{"members on a YAML reference", "types/x.yaml", "required: [type, f]\nfields:\n  f: {value: str, reference: config/teams.yaml, members: skills}\n", "goes with a `reference:` to pages"},
 		{"shape without files", "types/x.yaml", "shape: map\n", "go with `files:`"},
 		{"unknown shape", "types/x.yaml", "files: config/x.yaml\nshape: tree\n", "it takes fields, map, list"},
 		{"key off a map", "types/x.yaml", "files: config/x.yaml\nkey: {pattern: x}\n", "`shape: fields`"},

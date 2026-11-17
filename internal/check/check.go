@@ -71,14 +71,15 @@ func (r *Result) Governed() int {
 }
 
 type Checker struct {
-	S     *schema.Schema
-	refs  map[string]map[string]bool
-	types map[string]map[string][]string // a page reference -> value -> the `type:` of each page it names
-	stems map[string]map[string][]string // a directory -> page stem -> every page with it, recursively
+	S       *schema.Schema
+	refs    map[string]map[string]bool
+	types   map[string]map[string][]string // a page reference -> value -> the `type:` of each page it names
+	members map[string]map[string][]string // a page reference and members field -> slug -> the members the page lists
+	stems   map[string]map[string][]string // a directory -> page stem -> every page with it, recursively
 }
 
 func New(s *schema.Schema) *Checker {
-	return &Checker{S: s, refs: map[string]map[string]bool{}, types: map[string]map[string][]string{}, stems: map[string]map[string][]string{}}
+	return &Checker{S: s, refs: map[string]map[string]bool{}, types: map[string]map[string][]string{}, members: map[string]map[string][]string{}, stems: map[string]map[string][]string{}}
 }
 
 // Run checks each file.

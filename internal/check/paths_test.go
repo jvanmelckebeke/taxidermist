@@ -387,3 +387,67 @@ func TestASegmentHoldsForYAMLFiles(t *testing.T) {
 	expect(t, faults(t, "projects/garden.yaml", "a: 1\n"))
 	expect(t, faults(t, "projects/foobar.yaml", "a: 1\n"), "segment projects/*")
 }
+
+func withMembers(dir string) {
+	p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+	b, _ := os.ReadFile(p)
+	put(dir, "taxonomy/singletons.yaml", strings.Replace(string(b), "reference: people\n", "reference: people\n    members: skills\n", 1))
+	put(dir, "people/team/carol.md", "---\ntype: person\ntitle: Carol\nskills: [go, sql]\n---\n")
+	put(dir, "people/team/standup.md", "---\ntype: meeting\ntitle: Standup\nskills: go\n---\n")
+}
+
+func TestAMemberNamesSomethingInsideThePage(t *testing.T) {
+	expect(t, faults(t, "notes/x.md", note("people: [carol, carol::go, carol::sql]\n"), withMembers))
+	expect(t, faults(t, "notes/x.md", note("people: [standup::go]\n"), withMembers))
+	expect(t, faults(t, "notes/x.md", note("people: [carol::rust, carol::]\n"), withMembers), "value people[0]", "value people[1]")
+	// No members: key, so the separator is part of an unknown slug.
+	expect(t, faults(t, "notes/x.md", note("people: [carol::go]\n"), func(dir string) {
+		put(dir, "people/team/carol.md", "---\ntype: person\ntitle: Carol\nskills: [go]\n---\n")
+	}), "value people[0]")
+
+	f := checked(t, "notes/x.md", note("people: [carol::rust]\n"), withMembers)
+	if len(f) != 1 || f[0].Why != "`rust` is not listed under `skills` on page `carol`. It lists go \u00b7 sql" {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAMemberOfAnUnknownPageFailsOnThePage(t *testing.T) {
+	f := checked(t, "notes/x.md", note("people: [nobody::go]\n"), withMembers)
+	if len(f) != 1 || !strings.HasPrefix(f[0].Why, "no page at ") || !strings.Contains(f[0].Why, "/nobody.md") {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAMemberOfAPageWithoutTheFieldIsInvalid(t *testing.T) {
+	f := checked(t, "notes/x.md", note("people: [alice::go]\n"), withMembers)
+	if len(f) != 1 || !strings.HasSuffix(f[0].Why, ", which lists none") {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAMemberComposesWithReferenceType(t *testing.T) {
+	typed := func(dir string) {
+		withMembers(dir)
+		p := filepath.Join(dir, "taxonomy", "singletons.yaml")
+		b, _ := os.ReadFile(p)
+		put(dir, "taxonomy/singletons.yaml", strings.Replace(string(b), "members: skills\n", "members: skills\n    reference_type: person\n", 1))
+	}
+	expect(t, faults(t, "notes/x.md", note("people: [carol::go]\n"), typed))
+	f := checked(t, "notes/x.md", note("people: [standup::go]\n"), typed)
+	if len(f) != 1 || f[0].Why != "the page is `meeting`; this field takes only `person` pages" {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestAMemberOnADirectoryReferenceReadsTheIndex(t *testing.T) {
+	members := func(dir string) {
+		withProject(dir)
+		p := filepath.Join(dir, "taxonomy", "types", "note.yaml")
+		b, _ := os.ReadFile(p)
+		put(dir, "taxonomy/types/note.yaml", strings.Replace(string(b), "reference: projects/*\n", "reference: projects/*\n    members: phases\n", 1))
+		put(dir, "projects/hiring/index.md", "---\ntype: Project Plan\ntitle: Hiring\nphases: [offer]\n---\n")
+		put(dir, "projects/hiring/phases.md", "---\nphases: [other]\n---\n")
+	}
+	expect(t, faults(t, "notes/x.md", note("project: hiring::offer\n"), members))
+	expect(t, faults(t, "notes/x.md", note("project: hiring::other\n"), members), "value project")
+}

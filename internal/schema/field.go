@@ -81,6 +81,7 @@ type Field struct {
 	Items       Ordered[*Field]  `yaml:"items"`          // keys of each mapping in a `value: list`
 	Reference   string           `yaml:"reference"`      // a directory of pages, `<dir>/*`, or a YAML file whose top-level keys are the values
 	RefType     string           `yaml:"reference_type"` // the `type:` a referenced page must declare
+	Members     string           `yaml:"members"`        // a list field of the referenced page; `<slug>::<member>` is a value when the page lists the member there
 	Pattern     string           `yaml:"pattern"`        // a regular expression every scalar value matches
 	Key         *Field           `yaml:"key"`            // a `value: map`'s keys
 	Values      *Field           `yaml:"values"`         // a `value: map`'s values, when they are not mappings with a `schema:`
@@ -93,7 +94,7 @@ type Field struct {
 
 func (f *Field) UnmarshalYAML(n *yaml.Node) error {
 	if err := strict(n, "a field", "value", "guidance", "definitions", "vocabulary", "dynamic",
-		"schema", "items", "reference", "reference_type", "pattern", "key", "values", "required", "applies_to", "excludes"); err != nil {
+		"schema", "items", "reference", "reference_type", "members", "pattern", "key", "values", "required", "applies_to", "excludes"); err != nil {
 		return err
 	}
 	type plain Field
@@ -144,6 +145,10 @@ func (s *Schema) bind(f *Field, where string) error {
 	if f.RefType != "" && (f.Reference == "" || IsYAMLPath(f.Reference)) {
 		return errf("%s: field `%s` has `reference_type:`, which goes with a `reference:` to pages; "+
 			"a YAML file's keys have no type.", where, f.Name)
+	}
+	if f.Members != "" && (f.Reference == "" || IsYAMLPath(f.Reference)) {
+		return errf("%s: field `%s` has `members:`, which goes with a `reference:` to pages; "+
+			"a YAML file's keys have no frontmatter to read members from.", where, f.Name)
 	}
 	if (f.Key != nil || f.Values != nil) && f.Value != "map" {
 		return errf("%s: field `%s` has `key:` or `values:`, which go with `value: map`.", where, f.Name)

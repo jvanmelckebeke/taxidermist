@@ -320,6 +320,27 @@ func TestAReferenceTypeRendersOnTheFormatPage(t *testing.T) {
 	}
 }
 
+func TestMembersRenderOnTheFormatPage(t *testing.T) {
+	dir := testutil.CopyExample(t)
+	tax := filepath.Join(dir, "taxonomy")
+	p := filepath.Join(tax, "singletons.yaml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte(strings.Replace(string(b), "reference: people\n", "reference: people\n    members: skills\n", 1)), 0o644)
+	s, err := schema.Load(tax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := Pages(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "`<name>::<member>` also works, where `<member>` is listed under `skills` in that page's frontmatter. " +
+		"Checked, so a name that resolves to no page, or a member the page does not list, is a fault."
+	if !strings.Contains(pages["note"], want) {
+		t.Errorf("note.md lacks %q", want)
+	}
+}
+
 func TestWhenTextWordsEmptyConditions(t *testing.T) {
 	w := schema.Ordered[any]{Keys: []string{"archived", "status", "owner", "tags"}, Vals: []any{nil, "final", "", ""}}
 	want := "`archived` is not set, `status: final`, `owner` is not set, `tags` is not set"

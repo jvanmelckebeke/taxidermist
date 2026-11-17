@@ -70,6 +70,9 @@ func subKey(name string, k *schema.Field, req string) []string {
 	}
 	if k.Reference != "" {
 		line += " Any " + refTarget(k) + ", checked."
+		if k.Members != "" {
+			line += " `<name>::<member>` takes a member listed under `" + k.Members + "` on that page."
+		}
 	}
 	out := []string{line}
 	for _, d := range k.Enum() {
