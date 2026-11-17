@@ -152,7 +152,7 @@ func (p *typePage) fieldGuide() []string {
 // fieldValues describes what a field holds: its nested keys, a map's values, the
 // pages or keys a reference names, or its allowed values.
 func fieldValues(f *schema.Field) []string {
-	v := schema.SortedKeys(f.Enum())
+	v := schema.SortedKeys(f.Selectable())
 	if sub := f.Nested(); len(sub) > 0 || f.Values != nil {
 		L := []string{""}
 		if f.Values != nil {

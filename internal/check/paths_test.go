@@ -451,3 +451,65 @@ func TestAMemberOnADirectoryReferenceReadsTheIndex(t *testing.T) {
 	expect(t, faults(t, "notes/x.md", note("project: hiring::offer\n"), members))
 	expect(t, faults(t, "notes/x.md", note("project: hiring::other\n"), members), "value project")
 }
+
+const kindType = `traits: [core]
+required: [type, title, kind]
+optional: [tags]
+fields:
+  kind:
+    value: str
+    definitions:
+      books:
+        means: Printed or e-books
+        children:
+          fiction:
+            means: Invented stories
+            children:
+              thriller: Suspense-driven plots
+              horror: Fear as the point
+          nonfiction: Factual works
+      movies: Feature films
+`
+
+func withKinds(leafOnly string) func(string) {
+	return func(dir string) {
+		put(dir, "taxonomy/types/item.yaml", strings.Replace(kindType, "    value: str\n", "    value: str\n"+leafOnly, 1))
+	}
+}
+
+func item(kind string) string {
+	return "---\ntype: item\ntitle: i\nkind: \"" + kind + "\"\n---\n"
+}
+
+func TestAValueIsAPathThroughNestedDefinitions(t *testing.T) {
+	open := withKinds("")
+	for _, ok := range []string{"movies", "books", "books::fiction", "books::fiction::thriller", "books::nonfiction"} {
+		expect(t, faults(t, "notes/x.md", item(ok), open))
+	}
+	for _, bad := range []string{"fiction", "books::thriller", "books::fiction::thriller::x", "movies::fiction", "books::"} {
+		expect(t, faults(t, "notes/x.md", item(bad), open), "value kind")
+	}
+}
+
+func TestLeafOnlyRequiresAPathToALeaf(t *testing.T) {
+	leaf := withKinds("    leaf_only: true\n")
+	expect(t, faults(t, "notes/x.md", item("books::fiction::horror"), leaf))
+	expect(t, faults(t, "notes/x.md", item("movies"), leaf))
+	expect(t, faults(t, "notes/x.md", item("books::fiction"), leaf), "value kind")
+
+	f := checked(t, "notes/x.md", item("books"), leaf)
+	want := "allowed: books::fiction::horror \u00b7 books::fiction::thriller \u00b7 books::nonfiction \u00b7 movies"
+	if len(f) != 1 || f[0].Why != want {
+		t.Errorf("faults = %+v", f)
+	}
+}
+
+func TestANodeOverridesLeafOnly(t *testing.T) {
+	set := func(dir string) {
+		put(dir, "taxonomy/types/item.yaml", strings.Replace(
+			strings.Replace(kindType, "    value: str\n", "    value: str\n    leaf_only: true\n", 1),
+			"            means: Invented stories\n", "            means: Invented stories\n            leaf_only: false\n", 1))
+	}
+	expect(t, faults(t, "notes/x.md", item("books::fiction"), set))
+	expect(t, faults(t, "notes/x.md", item("books"), set), "value kind")
+}

@@ -109,7 +109,8 @@ A field is described by these keys:
 | key | means |
 |---|---|
 | `value` | `str`, `date`, `bool`, `int`, `float`, `list`, `object`, `map`, or an `a\|b` union. `float` accepts ints |
-| `definitions` | value → its meaning. The keys are the allowed values; there is no second list |
+| `definitions` | value → its meaning. The keys are the allowed values; there is no second list. A definition written as a mapping can add `children:`, a nested `definitions` block, one layer down. A value is then a path joined with `::`, such as `books::fiction::thriller`, to any depth; every layer has its own `means:` and `not:`, and the generated page lists every path. A key cannot contain `::`. Vocabularies do not take `children:` |
+| `leaf_only` | with nested `children:` in `definitions:`, `true` makes only a path to a leaf a value, so `books::fiction` fails when `thriller` and `horror` sit under it. The default is `false`: a path may stop at any layer. A node's own `leaf_only:` overrides the field's for that node. It fails in `lint` on a field or node that has no `children:` |
 | `vocabulary` | the name of a file in `vocabularies/` whose definitions are the allowed values |
 | `reference` | a directory whose page slugs, searched recursively, are the allowed values, so the list grows by adding a page. `reference: stories/*` takes the names of the folders directly under `stories/` that hold an `index.md` instead; the pages inside them are not values. `reference: gitea/repos.yaml`, a YAML file, takes that file's top-level keys |
 | `reference_type` | with a `reference:` to pages, the `type:` a page must declare to count. `reference: people` with `reference_type: person` takes `alice` but not `alice.work`, a `profile` page in the same folder. Every item of a list is checked; for `<dir>/*` the folder's `index.md` gives the type |

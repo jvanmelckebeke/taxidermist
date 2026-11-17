@@ -45,7 +45,7 @@ func template(name string, f *schema.Field, tail, in string) []string {
 		}
 		return out
 	}
-	v := schema.SortedKeys(f.Enum())
+	v := schema.SortedKeys(f.Selectable())
 	switch {
 	case len(v) > 0 && f.Value == "list":
 		return []string{in + name + ": [<" + strings.Join(v, " | ") + ">]" + tail}
